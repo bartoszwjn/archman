@@ -1,11 +1,15 @@
 //! ArchMan - a configuration utility for my specific ArchLinux setup.
 
-mod args;
+pub mod args;
+mod pacman;
+mod pkg;
 
-pub use args::Args;
+use args::{Args, Subcommand};
 
-pub fn run(_args: Args) -> anyhow::Result<()> {
-    println!("Hi");
+pub fn run(args: Args) -> anyhow::Result<()> {
+    match args.subcommand {
+        Subcommand::Pkg(pkg_subcommand) => pkg::synchronize_packages(pkg_subcommand)?,
+    }
 
     Ok(())
 }
