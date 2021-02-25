@@ -11,7 +11,7 @@ use anyhow::Context;
 
 use crate::{
     args::Pkg,
-    pacman::{self, InstallReason, Origin, Package, QueryFilter},
+    pacman::{self, InstallReason, Origin, Package, PacmanError, QueryFilter},
 };
 
 pub fn synchronize_packages(args: Pkg) -> anyhow::Result<()> {
@@ -30,19 +30,43 @@ pub fn synchronize_packages(args: Pkg) -> anyhow::Result<()> {
     );
 
     let (to_install, to_remove) = packages_diff(&declared, &installed);
-    println!("Packages to be removed: {}", to_remove.len());
-    for package in &to_remove {
-        println!("  {}", package);
+
+    if to_remove.is_empty() {
+        println!("No packages need to be removed");
+    } else {
+        println!("Packages to be removed: {}", to_remove.len());
+        for package in &to_remove {
+            println!("  {}", package);
+        }
+        match pacman::remove(&to_remove, true) {
+            Ok(()) => {}
+            Err(PacmanError::ExitFailure) => {
+                println!("pacman did not exit successfully, continuing...");
+            }
+            Err(err) => Err(err).context("Failed to remove undeclared packages")?,
+        }
     }
-    println!("Packages to be installed: {}", to_install.len());
-    for package in &to_install {
-        println!("  {}", package);
+
+    if to_install.is_empty() {
+        println!("No packages need to be installed");
+    } else {
+        println!("Packages to be installed: {}", to_install.len());
+        for package in &to_install {
+            println!("  {}", package);
+        }
+        match pacman::install(&to_install) {
+            Ok(()) => {}
+            Err(PacmanError::ExitFailure) => {
+                println!("pacman did not exit successfully, continuing...");
+            }
+            Err(err) => Err(err).context("Failed to install new packages")?,
+        }
     }
 
     Ok(())
 }
 
-fn parse_packages_file<P: AsRef<Path>>(path: &P) -> anyhow::Result<Vec<String>> {
+fn parse_packages_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Vec<String>> {
     let file = BufReader::new(File::open(path).context("Failed to open packages file")?);
 
     let mut packages = vec![];
