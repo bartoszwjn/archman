@@ -22,4 +22,7 @@ pub struct Pkg {
     /// path to the package list file
     #[structopt(short = "p", long, parse(from_os_str))]
     pub package_list: PathBuf,
+    /// do not upgrade packages
+    #[structopt(long)]
+    pub no_upgrade: bool,
 }

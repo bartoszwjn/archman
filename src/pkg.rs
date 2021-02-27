@@ -11,62 +11,38 @@ use anyhow::Context;
 
 use crate::{
     args::Pkg,
-    pacman::{self, InstallReason, Origin, Package, PacmanError, QueryFilter},
+    pacman::{self, InstallReason, Origin, Package, Packages, PacmanError, QueryFilter},
 };
 
 pub fn synchronize_packages(args: Pkg) -> anyhow::Result<()> {
+    update_packages(!args.no_upgrade).context("Failed to update installed packages")?;
+
     let declared = parse_packages_file(&args.package_list)?;
-    println!("Found {} declared packages", declared.len());
-
-    let filter = QueryFilter {
-        install_reason: InstallReason::Explicit,
-        origin: Origin::Native,
-        ..QueryFilter::default()
-    };
-    let installed = pacman::query(filter)?;
-    println!(
-        "Found {} explicitly installed, native packages",
-        installed.len()
-    );
-
+    let installed = query_installed_packages().context("Failed to query installed packages")?;
     let (to_install, to_remove) = packages_diff(&declared, &installed);
 
-    if to_remove.is_empty() {
-        println!("No packages need to be removed");
-    } else {
-        println!("Packages to be removed: {}", to_remove.len());
-        for package in &to_remove {
-            println!("  {}", package);
-        }
-        match pacman::remove(&to_remove, true) {
-            Ok(()) => {}
-            Err(PacmanError::ExitFailure) => {
-                println!("pacman did not exit successfully, continuing...");
-            }
-            Err(err) => Err(err).context("Failed to remove undeclared packages")?,
-        }
-    }
-
-    if to_install.is_empty() {
-        println!("No packages need to be installed");
-    } else {
-        println!("Packages to be installed: {}", to_install.len());
-        for package in &to_install {
-            println!("  {}", package);
-        }
-        match pacman::install(&to_install) {
-            Ok(()) => {}
-            Err(PacmanError::ExitFailure) => {
-                println!("pacman did not exit successfully, continuing...");
-            }
-            Err(err) => Err(err).context("Failed to install new packages")?,
-        }
-    }
+    remove_packages(&to_remove).context("Failed to remove undeclared packages")?;
+    install_packages(&to_install).context("Failed to install new packages")?;
 
     Ok(())
 }
 
-fn parse_packages_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Vec<String>> {
+fn update_packages(upgrade: bool) -> anyhow::Result<()> {
+    println!(
+        "Updating packages ({} system upgrade)...",
+        if upgrade { "with" } else { "without" }
+    );
+    match pacman::update(upgrade) {
+        Ok(()) => Ok(()),
+        Err(PacmanError::ExitFailure) => {
+            println!("pacman did not exit successfully, continuing...");
+            Ok(())
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn parse_packages_file(path: &Path) -> anyhow::Result<Vec<String>> {
     let file = BufReader::new(File::open(path).context("Failed to open packages file")?);
 
     let mut packages = vec![];
@@ -79,6 +55,21 @@ fn parse_packages_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Vec<String>> {
         packages.extend(without_comment.split_whitespace().map(ToOwned::to_owned))
     }
     packages.sort();
+    println!("Found {} declared packages", packages.len());
+
+    Ok(packages)
+}
+
+fn query_installed_packages() -> anyhow::Result<Packages> {
+    let packages = pacman::query(QueryFilter {
+        install_reason: InstallReason::Explicit,
+        origin: Origin::Native,
+        ..QueryFilter::default()
+    })?;
+    println!(
+        "Found {} explicitly installed, native packages",
+        packages.len()
+    );
 
     Ok(packages)
 }
@@ -127,4 +118,46 @@ fn packages_diff<'a>(
     }
 
     (to_install, to_remove)
+}
+
+fn remove_packages(to_remove: &[&str]) -> anyhow::Result<()> {
+    if to_remove.is_empty() {
+        println!("No packages need to be removed");
+        return Ok(());
+    }
+
+    println!("Packages to be removed: {}", to_remove.len());
+    for package in to_remove {
+        println!("  {}", package);
+    }
+
+    match pacman::remove(to_remove, true) {
+        Ok(()) => Ok(()),
+        Err(PacmanError::ExitFailure) => {
+            println!("pacman did not exit successfully, continuing...");
+            Ok(())
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn install_packages(to_install: &[&str]) -> anyhow::Result<()> {
+    if to_install.is_empty() {
+        println!("No packages need to be installed");
+        return Ok(());
+    }
+
+    println!("Packages to be installed: {}", to_install.len());
+    for package in to_install {
+        println!("  {}", package);
+    }
+
+    match pacman::install(to_install) {
+        Ok(()) => Ok(()),
+        Err(PacmanError::ExitFailure) => {
+            println!("pacman did not exit successfully, continuing...");
+            Ok(())
+        }
+        Err(err) => Err(err.into()),
+    }
 }

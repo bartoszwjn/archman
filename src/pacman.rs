@@ -4,7 +4,7 @@ use std::{
     ffi::OsStr,
     io::{self, BufRead},
     ops::Deref,
-    process::{Command, Stdio},
+    process::{Command, ExitStatus, Stdio},
 };
 
 use thiserror::Error;
@@ -26,9 +26,7 @@ where
 {
     let mut cmd = Command::new("sudo");
     cmd.arg("pacman").arg("-S").args(packages);
-    println!("===== RUNNING PACMAN =====");
-    let status = cmd.status()?;
-    println!("===== END OF PACMAN OUTPUT =====");
+    let status = run_for_status(cmd)?;
     if status.success() {
         Ok(())
     } else {
@@ -47,14 +45,33 @@ where
         cmd.arg("-s");
     }
     cmd.args(packages);
-    println!("===== RUNNING PACMAN =====");
-    let status = cmd.status()?;
-    println!("===== END OF PACMAN OUTPUT =====");
+    let status = run_for_status(cmd)?;
     if status.success() {
         Ok(())
     } else {
         Err(PacmanError::ExitFailure)
     }
+}
+
+pub fn update(upgrade: bool) -> Result<(), PacmanError> {
+    let mut cmd = Command::new("sudo");
+    cmd.arg("pacman").arg("-S").arg("-y");
+    if upgrade {
+        cmd.arg("-u");
+    }
+    let status = run_for_status(cmd)?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(PacmanError::ExitFailure)
+    }
+}
+
+fn run_for_status(mut cmd: Command) -> Result<ExitStatus, io::Error> {
+    println!("\n===== RUNNING PACMAN =====");
+    let status = cmd.status();
+    println!("===== END OF PACMAN OUTPUT =====\n");
+    status
 }
 
 #[derive(Debug)]
