@@ -2,12 +2,15 @@
 
 use std::{
     cmp::Ordering,
-    fs::File,
-    io::{BufRead, BufReader},
+    env,
+    fs::{self, File, OpenOptions},
+    io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
+    process::Command,
 };
 
-use anyhow::Context;
+use anyhow::{anyhow, ensure, Context};
+use regex::Regex;
 
 use crate::{
     args::Pkg,
@@ -23,6 +26,8 @@ pub fn synchronize_packages(args: Pkg) -> anyhow::Result<()> {
 
     remove_packages(&to_remove).context("Failed to remove undeclared packages")?;
     install_packages(&to_install).context("Failed to install new packages")?;
+
+    patch_xkb_types(&args.xkb_types).context("Failed to patch the xkb types file")?;
 
     Ok(())
 }
@@ -159,5 +164,59 @@ fn install_packages(to_install: &[&str]) -> anyhow::Result<()> {
             Ok(())
         }
         Err(err) => Err(err.into()),
+    }
+}
+
+fn patch_xkb_types(path: &Path) -> anyhow::Result<()> {
+    let mut contents = fs::read_to_string(path).context("Failed to read from file")?;
+
+    const XKB_TYPES_REGEX_STR: &str =
+        r#"^default xkb_types "complete" \{\n(?:    include "[[:alnum:]]+"\n)*\};\n$"#;
+    let contents_regex =
+        Regex::new(XKB_TYPES_REGEX_STR).context("Failed to build a regular expression")?;
+    ensure!(
+        contents_regex.is_match(&contents),
+        "Did not recognize the contents of the xkb types file"
+    );
+
+    if !contents.contains("include \"ed\"") {
+        println!("Patching up {:?}", path);
+        // regex match ensures the string contains '}'
+        let last_line_start = contents.find("}").unwrap();
+        contents.insert_str(last_line_start, "    include \"ed\"\n");
+        write_as_root(path, &contents)?;
+    }
+
+    Ok(())
+}
+
+fn write_as_root(path: &Path, contents: &str) -> anyhow::Result<()> {
+    let mut tmp_path = env::temp_dir();
+    tmp_path.push("archman_xkb_types");
+
+    BufWriter::new(
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)
+            .context("Failed to create temporary file")?,
+    )
+    .write_all(contents.as_bytes())
+    .context("Failed to write to temporary file")?;
+
+    let status = Command::new("sudo")
+        .arg("mv")
+        .arg(&tmp_path)
+        .arg(path)
+        .status()
+        .context("Failed to run 'mv' command")?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "'sudo mv {:?} {:?}' did not exit successfully",
+            &tmp_path,
+            path
+        ))
     }
 }

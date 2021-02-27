@@ -1,12 +1,13 @@
+use ansi_term::Colour;
 use structopt::StructOpt;
 
 fn main() -> ! {
     let exit_code = {
         let args = StructOpt::from_args();
         match archman::run(args) {
-            Ok(_) => 0,
+            Ok(()) => 0,
             Err(err) => {
-                println!("Error: {}", err);
+                println!("\n{} {:?}", Colour::Red.bold().paint("Error:"), err);
                 1
             }
         }

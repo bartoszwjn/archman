@@ -25,4 +25,11 @@ pub struct Pkg {
     /// do not upgrade packages
     #[structopt(long)]
     pub no_upgrade: bool,
+    /// path to the xkb types file
+    #[structopt(
+        long,
+        parse(from_os_str),
+        default_value = "/usr/share/X11/xkb/types/complete"
+    )]
+    pub xkb_types: PathBuf,
 }
