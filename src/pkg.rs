@@ -1,7 +1,33 @@
-//! Synchronizing installed packages.
+//! Managing installed packages.
+//!
+//! The end goal is that packages declared in the package file are all installed, and their install
+//! reason is `explicitly installed`. All packages that are not explicitly installed and are not
+//! dependencies of other packages should be removed. Sometimes that might not be what we want, e.g.
+//! for packages that are build dependencies of some AUR packages. One day this might be addressed.
+//!
+//! Right now we do not concern ourselves with AUR packages.
+//!
+//! For now this is what we do:
+//! - read the list of packages from the package file
+//! - get the list of explicitly installed packages
+//! - get the list of packages installed as dependencies
+//! - mark declared packages that are installed as dependencies as explicitly installed
+//! - mark explicitly installed packages that are not declared as installed as dependencies
+//! - update packages and install declared packages that are not installed
+//! - if doing a cleanup, get the list of packages installed as dependencies that are not needed
+//!   and remove them recursively
+//! - if not doing a cleanup, recursively remove the packages that were explicitly installed before,
+//!   are no longer in the list of packages and are not dependencies of other installed packages
+//! - check if the xkb_types file needs to be patched (TODO: run arbitrary scripts at this point?)
+//!
+//! # Packages file
+//!
+//! The file should be a UTF-8 encoded text file. In the file any occurrence of the `#` character
+//! starts a comment that lasts until the end of the line. After comments are ignored, the file is
+//! read as a whitespace separated list of package names.
 
 use std::{
-    cmp::Ordering,
+    collections::HashSet,
     env,
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader, BufWriter, Write},
@@ -9,48 +35,65 @@ use std::{
     process::Command,
 };
 
+use ansi_term::Colour;
 use anyhow::{anyhow, ensure, Context};
 use regex::Regex;
 
 use crate::{
     args::Pkg,
-    pacman::{self, InstallReason, Origin, Package, Packages, PacmanError, QueryFilter},
+    pacman::{self, InstallReason, PacmanError, QueryFilter},
 };
 
-pub fn synchronize_packages(args: Pkg) -> anyhow::Result<()> {
-    update_packages(!args.no_upgrade).context("Failed to update installed packages")?;
+/// Packages organized by what we should do with them.
+#[derive(Clone, Debug)]
+struct OrganizedPackages<'a> {
+    to_install: Vec<&'a str>,
+    to_mark_as_explicit: Vec<&'a str>,
+    to_remove: Vec<&'a str>,
+}
 
-    let declared = parse_packages_file(&args.package_list)?;
-    let installed = query_installed_packages().context("Failed to query installed packages")?;
-    let (to_install, to_remove) = packages_diff(&declared, &installed);
+/// Synchronizes installed packages with the package list.
+///
+/// See module documentation for the details.
+pub fn synchronize_packages(cfg: Pkg) -> anyhow::Result<()> {
+    let declared =
+        parse_package_file(&cfg.package_list).context("Failed to read the package list")?;
+    let (installed_explicitly, installed_as_deps) =
+        query_installed_packages().context("Failed to query for installed packages")?;
+    println!(
+        "Packages: {} declared, {} explicitly installed, {} installed as dependencies",
+        declared.len(),
+        installed_explicitly.len(),
+        installed_as_deps.len(),
+    );
+    let organized = organize_packages(&declared, &installed_explicitly, &installed_as_deps);
 
-    remove_packages(&to_remove).context("Failed to remove undeclared packages")?;
-    install_packages(&to_install).context("Failed to install new packages")?;
+    update_database(&organized).context("Failed to update package database")?;
+    update_and_install_packages(!cfg.no_upgrade, &organized.to_install)
+        .context("Failed to update and install new packages")?;
 
-    patch_xkb_types(&args.xkb_types).context("Failed to patch the xkb types file")?;
+    if cfg.cleanup {
+        let unneeded =
+            query_unneeded_packages().context("Failed to query for unneeded packages")?;
+        let mut unneeded = unneeded.iter().map(String::as_str).collect::<Vec<_>>();
+        unneeded.sort();
+        remove_packages(&unneeded).context("Failed to remove unneeded packages")?;
+    } else {
+        remove_packages(&organized.to_remove).context("Failed to remove unneeded packages")?;
+    }
+
+    patch_xkb_types(&cfg.xkb_types).context("Failed to patch the xkb types file")?;
 
     Ok(())
 }
 
-fn update_packages(upgrade: bool) -> anyhow::Result<()> {
-    println!(
-        "Updating packages ({} system upgrade)...",
-        if upgrade { "with" } else { "without" }
-    );
-    match pacman::update(upgrade) {
-        Ok(()) => Ok(()),
-        Err(PacmanError::ExitFailure) => {
-            println!("pacman did not exit successfully, continuing...");
-            Ok(())
-        }
-        Err(err) => Err(err.into()),
-    }
-}
-
-fn parse_packages_file(path: &Path) -> anyhow::Result<Vec<String>> {
+/// Reads the set declared packages from the given file.
+///
+/// See the module documentation for the description of the file format.
+fn parse_package_file(path: &Path) -> anyhow::Result<HashSet<String>> {
     let file = BufReader::new(File::open(path).context("Failed to open packages file")?);
 
-    let mut packages = vec![];
+    let mut packages = HashSet::new();
     for line in file.lines() {
         let line = line.context("Failed to parse packages file")?;
         let without_comment = match line.find('#') {
@@ -59,114 +102,131 @@ fn parse_packages_file(path: &Path) -> anyhow::Result<Vec<String>> {
         };
         packages.extend(without_comment.split_whitespace().map(ToOwned::to_owned))
     }
-    packages.sort();
-    println!("Found {} declared packages", packages.len());
 
     Ok(packages)
 }
 
-fn query_installed_packages() -> anyhow::Result<Packages> {
-    let packages = pacman::query(QueryFilter {
-        install_reason: InstallReason::Explicit,
-        origin: Origin::Native,
+/// Queries for packages currently installed explicitly or as dependencies.
+fn query_installed_packages() -> anyhow::Result<(HashSet<String>, HashSet<String>)> {
+    let installed_explicitly = pacman::query(QueryFilter {
+        install_reason: Some(InstallReason::Explicit),
         ..QueryFilter::default()
     })?;
-    println!(
-        "Found {} explicitly installed, native packages",
-        packages.len()
-    );
+    let installed_as_dependencies = pacman::query(QueryFilter {
+        install_reason: Some(InstallReason::Dependency),
+        ..QueryFilter::default()
+    })?;
 
-    Ok(packages)
+    Ok((installed_explicitly, installed_as_dependencies))
 }
 
-fn packages_diff<'a>(
-    declared: &'a [String],
-    installed: &'a [Package],
-) -> (Vec<&'a str>, Vec<&'a str>) {
-    let mut declared = declared.into_iter();
-    let mut installed = installed.into_iter();
-    let mut next_declared = declared.next();
-    let mut next_installed = installed.next();
-    let mut to_install = vec![];
-    let mut to_remove = vec![];
+/// Organizes packages based on what we should do with them.
+fn organize_packages<'a>(
+    declared: &'a HashSet<String>,
+    installed_explicitly: &'a HashSet<String>,
+    installed_as_dependencies: &'a HashSet<String>,
+) -> OrganizedPackages<'a> {
+    let mut to_remove = installed_explicitly
+        .difference(declared)
+        .map(String::as_str)
+        .collect::<Vec<_>>();
 
-    loop {
-        match (next_declared, next_installed) {
-            (None, None) => break,
-            (None, Some(inst)) => {
-                to_remove.push(inst.name.as_str());
-                next_installed = installed.next();
-            }
-            (Some(decl), None) => {
-                to_install.push(decl.as_str());
-                next_declared = declared.next();
-            }
-            (Some(decl), Some(inst)) => {
-                let decl = decl.as_str();
-                let inst = inst.name.as_str();
-                match decl.cmp(inst) {
-                    Ordering::Less => {
-                        to_install.push(decl);
-                        next_declared = declared.next();
-                    }
-                    Ordering::Equal => {
-                        next_declared = declared.next();
-                        next_installed = installed.next();
-                    }
-                    Ordering::Greater => {
-                        to_remove.push(inst);
-                        next_installed = installed.next();
-                    }
-                }
+    let mut to_install = vec![];
+    let mut to_mark_as_explicit = vec![];
+    for package in declared {
+        if !installed_explicitly.contains(package) {
+            if installed_as_dependencies.contains(package) {
+                to_mark_as_explicit.push(package.as_str());
+            } else {
+                to_install.push(package.as_str());
             }
         }
     }
 
-    (to_install, to_remove)
+    // sort them so that they look nicer if we print them
+    to_remove.sort();
+    to_install.sort();
+    to_mark_as_explicit.sort();
+
+    OrganizedPackages {
+        to_install,
+        to_mark_as_explicit,
+        to_remove,
+    }
 }
 
+/// Updates the install reason of already installed packages.
+fn update_database(organized: &OrganizedPackages) -> anyhow::Result<()> {
+    if !organized.to_mark_as_explicit.is_empty() {
+        println!(
+            "Marking {} packages as explicitly installed",
+            organized.to_mark_as_explicit.len(),
+        );
+        pacman::database(InstallReason::Explicit, &organized.to_mark_as_explicit)?;
+    }
+
+    if !organized.to_remove.is_empty() {
+        println!(
+            "Marking {} packages as installed as dependencies",
+            organized.to_remove.len(),
+        );
+        pacman::database(InstallReason::Dependency, &organized.to_remove)?;
+    }
+
+    Ok(())
+}
+
+/// Updates installed packages and installs new ones.
+fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Result<()> {
+    println!(
+        "Updating package databases and installing {} new packages ({} system upgrade)",
+        to_install.len(),
+        if upgrade { "with" } else { "without" },
+    );
+    match pacman::sync(upgrade, to_install) {
+        Ok(()) => Ok(()),
+        Err(PacmanError::ExitFailure) => {
+            println!(
+                "{}",
+                Colour::Yellow.paint("pacman did not exit successfully, continuing..."),
+            );
+            Ok(())
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// Queries for packages installed as dependencies that are not required by other packages.
+fn query_unneeded_packages() -> anyhow::Result<HashSet<String>> {
+    let unneeded = pacman::query(QueryFilter {
+        install_reason: Some(InstallReason::Dependency),
+        unrequired: true,
+        ..QueryFilter::default()
+    })?;
+    println!("Found {} unneeded packages", unneeded.len());
+    Ok(unneeded)
+}
+
+/// Recursively removes given packages, if they are not needed by other packages.
 fn remove_packages(to_remove: &[&str]) -> anyhow::Result<()> {
     if to_remove.is_empty() {
-        println!("No packages need to be removed");
         return Ok(());
     }
-
-    println!("Packages to be removed: {}", to_remove.len());
-    for package in to_remove {
-        println!("  {}", package);
-    }
-
-    match pacman::remove(to_remove, true) {
+    println!("Removing {} packages", to_remove.len());
+    match pacman::remove(to_remove) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
-            println!("pacman did not exit successfully, continuing...");
+            println!(
+                "{}",
+                Colour::Yellow.paint("pacman did not exit successfully, continuing..."),
+            );
             Ok(())
         }
         Err(err) => Err(err.into()),
     }
 }
 
-fn install_packages(to_install: &[&str]) -> anyhow::Result<()> {
-    if to_install.is_empty() {
-        println!("No packages need to be installed");
-        return Ok(());
-    }
-
-    println!("Packages to be installed: {}", to_install.len());
-    for package in to_install {
-        println!("  {}", package);
-    }
-
-    match pacman::install(to_install) {
-        Ok(()) => Ok(()),
-        Err(PacmanError::ExitFailure) => {
-            println!("pacman did not exit successfully, continuing...");
-            Ok(())
-        }
-        Err(err) => Err(err.into()),
-    }
-}
-
+/// Includes my own xkb types in the types file, in case it was overwritten during the update.
 fn patch_xkb_types(path: &Path) -> anyhow::Result<()> {
     let mut contents = fs::read_to_string(path).context("Failed to read from file")?;
 
@@ -176,7 +236,7 @@ fn patch_xkb_types(path: &Path) -> anyhow::Result<()> {
         Regex::new(XKB_TYPES_REGEX_STR).context("Failed to build a regular expression")?;
     ensure!(
         contents_regex.is_match(&contents),
-        "Did not recognize the contents of the xkb types file"
+        "Did not recognize the contents of the xkb types file",
     );
 
     if !contents.contains("include \"ed\"") {
@@ -190,6 +250,7 @@ fn patch_xkb_types(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Creates a temporary file with the given contents, then moves it to the given path with `sudo`.
 fn write_as_root(path: &Path, contents: &str) -> anyhow::Result<()> {
     let mut tmp_path = env::temp_dir();
     tmp_path.push("archman_xkb_types");
@@ -216,7 +277,7 @@ fn write_as_root(path: &Path, contents: &str) -> anyhow::Result<()> {
         Err(anyhow!(
             "'sudo mv {:?} {:?}' did not exit successfully",
             &tmp_path,
-            path
+            path,
         ))
     }
 }

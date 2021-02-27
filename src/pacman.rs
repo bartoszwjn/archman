@@ -1,189 +1,161 @@
-//! Interacting with `pacman` - the Arch Linux package manager.
+//! Running `pacman` - the Arch Linux package manager.
+//!
+//! The functions in this module run the respective `pacman` subcommands. Additional flags are given
+//! based on the function arguments. Subcommands that require root privileges are run with `sudo`.
 
 use std::{
+    collections::HashSet,
     ffi::OsStr,
-    io::{self, BufRead},
-    ops::Deref,
-    process::{Command, ExitStatus, Stdio},
+    io,
+    process::{Command, Stdio},
 };
 
 use thiserror::Error;
 
+/// The return type of all `pacman` calls.
+type Result<T, E = PacmanError> = std::result::Result<T, E>;
+
+/// Errors that can occur when trying to run `pacman`.
 #[derive(Debug, Error)]
 pub enum PacmanError {
+    /// `pacman` did not exit successfully.
     #[error("pacman did not exit successfully")]
     ExitFailure,
-    #[error("Failed to parse pacman output:\n{0}")]
-    OutputParseError(String),
+    /// `pacman` output was not valid UTF-8.
+    #[error("pacman output was not valid UTF-8:\n{}", String::from_utf8_lossy(.0))]
+    NonUtf8Output(Vec<u8>),
+    /// A IO error occurred.
     #[error("Failed to run pacman: {0}")]
     IO(#[from] io::Error),
 }
 
-pub fn install<'a, P, S>(packages: P) -> Result<(), PacmanError>
-where
-    P: IntoIterator<Item = S>,
-    S: AsRef<OsStr>,
-{
-    let mut cmd = Command::new("sudo");
-    cmd.arg("pacman").arg("-S").args(packages);
-    let status = run_for_status(cmd)?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(PacmanError::ExitFailure)
-    }
-}
-
-pub fn remove<'a, P, S>(packages: P, recursive: bool) -> Result<(), PacmanError>
-where
-    P: IntoIterator<Item = S>,
-    S: AsRef<OsStr>,
-{
-    let mut cmd = Command::new("sudo");
-    cmd.arg("pacman").arg("-R");
-    if recursive {
-        cmd.arg("-s");
-    }
-    cmd.args(packages);
-    let status = run_for_status(cmd)?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(PacmanError::ExitFailure)
-    }
-}
-
-pub fn update(upgrade: bool) -> Result<(), PacmanError> {
-    let mut cmd = Command::new("sudo");
-    cmd.arg("pacman").arg("-S").arg("-y");
-    if upgrade {
-        cmd.arg("-u");
-    }
-    let status = run_for_status(cmd)?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(PacmanError::ExitFailure)
-    }
-}
-
-fn run_for_status(mut cmd: Command) -> Result<ExitStatus, io::Error> {
-    println!("\n===== RUNNING PACMAN =====");
-    let status = cmd.status();
-    println!("===== END OF PACMAN OUTPUT =====\n");
-    status
-}
-
-#[derive(Debug)]
-pub struct Packages(Vec<Package>);
-
-#[derive(Debug)]
-pub struct Package {
-    pub name: String,
-    pub version: String,
-}
-
-#[derive(Debug, Default)]
+/// Filter for packages returned from a query.
+#[derive(Clone, Debug, Default)]
 pub struct QueryFilter {
-    pub install_reason: InstallReason,
-    pub origin: Origin,
+    /// Constrain the install reason.
+    pub install_reason: Option<InstallReason>,
+    /// Only packages not (optionally) required by any other package.
+    // TODO: ignore optional dependencies?
     pub unrequired: bool,
+    /// Only outdated packages.
     pub outdated: bool,
 }
 
-#[derive(Debug)]
+/// Install reason of a package.
+#[derive(Clone, Copy, Debug)]
 pub enum InstallReason {
-    Any,
+    /// Explicitly installed.
     Explicit,
+    /// Installed as a dependency of another package.
     Dependency,
 }
 
-#[derive(Debug)]
-pub enum Origin {
-    Any,
-    Native,
-    Foreign,
+/// `pacman -D`
+///
+/// # Arguments
+/// - `install_reason`: the install reason to be set for the specified `packages`.
+/// - `packages`: packages that should have their database entries modified.
+pub fn database<P, S>(install_reason: InstallReason, packages: P) -> Result<()>
+where
+    P: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut cmd = Command::new("sudo");
+    cmd.arg("pacman").arg("-D");
+    match install_reason {
+        InstallReason::Explicit => cmd.arg("--asexplicit"),
+        InstallReason::Dependency => cmd.arg("--asdeps"),
+    };
+    cmd.args(packages);
+
+    run_for_status(cmd)
 }
 
-pub fn query(filter: QueryFilter) -> Result<Packages, PacmanError> {
+/// `pacman -S`
+///
+/// The `--refresh` (`-y`) flag is always used.
+///
+/// # Arguments
+/// - `system_upgrade`: update outdated packages (`-u` flag).
+/// - `packages`: additional packages to be installed.
+pub fn sync<P, S>(system_upgrade: bool, packages: P) -> Result<()>
+where
+    P: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut cmd = Command::new("sudo");
+    cmd.arg("pacman").arg("-S").arg("-y");
+    if system_upgrade {
+        cmd.arg("-u");
+    }
+    cmd.args(packages);
+
+    run_for_status(cmd)
+}
+
+/// `pacman -R`
+///
+/// The `--recursive` (`-s`) and `--unneeded` (`-u`) flags are always used.
+///
+/// # Arguments
+/// - `packages`: packages that should be removed.
+pub fn remove<P, S>(packages: P) -> Result<()>
+where
+    P: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut cmd = Command::new("sudo");
+    cmd.arg("pacman").arg("-R").arg("-s").arg("-u");
+    cmd.args(packages);
+
+    run_for_status(cmd)
+}
+
+/// Runs the given command and maps its return status to a variant of [`Result`].
+///
+/// The input and output streams of the command are inherited from the current process. Emits output
+/// to mark the start and end of the command output.
+fn run_for_status(mut cmd: Command) -> Result<()> {
+    // TODO: add colors and echo the executed command
+    println!("\n===== RUNNING PACMAN =====");
+    let status = cmd.status();
+    println!("===== END OF PACMAN OUTPUT =====\n");
+    match status {
+        Ok(exit_status) if exit_status.success() => Ok(()),
+        Ok(_) => Err(PacmanError::ExitFailure),
+        Err(io_err) => Err(io_err.into()),
+    }
+}
+
+/// `pacman -Q`
+///
+/// The `--native` (`-n`) flag is always used. `stdout` is captured and parsed, `stderr` is
+/// inherited from the current process.
+pub fn query(filter: QueryFilter) -> Result<HashSet<String>> {
     let mut cmd = Command::new("pacman");
-    cmd.arg("-Q");
-    apply_filter(&mut cmd, filter);
-    cmd.stderr(Stdio::inherit());
-
-    let output = cmd.output()?;
-    if !output.status.success() {
-        return Err(PacmanError::ExitFailure);
-    }
-
-    let packages = output
-        .stdout
-        .lines()
-        .map(|line| parse_package(line?))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(Packages(packages))
-}
-
-fn apply_filter(cmd: &mut Command, filter: QueryFilter) {
-    match filter.install_reason {
-        InstallReason::Any => {}
-        InstallReason::Explicit => {
-            cmd.arg("-e");
-        }
-        InstallReason::Dependency => {
-            cmd.arg("-d");
-        }
-    }
-    match filter.origin {
-        Origin::Any => {}
-        Origin::Native => {
-            cmd.arg("-n");
-        }
-        Origin::Foreign => {
-            cmd.arg("-m");
-        }
+    cmd.arg("-Q").arg("-q").arg("-n");
+    if let Some(install_reason) = filter.install_reason {
+        match install_reason {
+            InstallReason::Explicit => cmd.arg("-e"),
+            InstallReason::Dependency => cmd.arg("-d"),
+        };
     }
     if filter.unrequired {
         cmd.arg("-t");
     }
     if filter.outdated {
         cmd.arg("-u");
-    }
-}
-
-fn parse_package(line: String) -> Result<Package, PacmanError> {
-    let mut words = line.split_whitespace();
-    let name = match words.next() {
-        Some(word) => word.to_owned(),
-        None => return Err(PacmanError::OutputParseError(line)),
     };
-    let version = match words.next() {
-        Some(word) => word.to_owned(),
-        None => return Err(PacmanError::OutputParseError(line)),
-    };
-    if let Some(_) = words.next() {
-        return Err(PacmanError::OutputParseError(line));
-    }
-    Ok(Package { name, version })
-}
+    cmd.stderr(Stdio::inherit());
 
-impl Deref for Packages {
-    type Target = [Package];
+    let output = cmd.output()?;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Default for InstallReason {
-    fn default() -> Self {
-        Self::Any
-    }
-}
-
-impl Default for Origin {
-    fn default() -> Self {
-        Self::Any
+    if output.status.success() {
+        match std::str::from_utf8(&output.stdout) {
+            Ok(s) => Ok(s.lines().map(String::from).collect()),
+            Err(_) => Err(PacmanError::NonUtf8Output(output.stdout)),
+        }
+    } else {
+        Err(PacmanError::ExitFailure)
     }
 }

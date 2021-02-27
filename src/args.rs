@@ -19,12 +19,15 @@ pub enum Subcommand {
 /// Synchronize installed packages with the package list.
 #[derive(Debug, StructOpt)]
 pub struct Pkg {
-    /// path to the package list file
-    #[structopt(short = "p", long, parse(from_os_str))]
-    pub package_list: PathBuf,
+    /// remove all unneeded packages
+    #[structopt(short = "c", long)]
+    pub cleanup: bool,
     /// do not upgrade packages
     #[structopt(long)]
     pub no_upgrade: bool,
+    /// path to the package list file
+    #[structopt(short = "p", long, parse(from_os_str))]
+    pub package_list: PathBuf,
     /// path to the xkb types file
     #[structopt(
         long,
