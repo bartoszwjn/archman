@@ -4,20 +4,23 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-#[structopt(about)]
+/// The programs command line arguments.
+#[derive(Clone, Debug, StructOpt)]
 pub struct Args {
     #[structopt(subcommand)]
     pub subcommand: Subcommand,
 }
 
-#[derive(Debug, StructOpt)]
+// TODO a better about
+/// The programs subcommands.
+#[derive(Clone, Debug, StructOpt)]
+#[structopt(about = "A configuration utility for my specific Arch Linux setup")]
 pub enum Subcommand {
     Pkg(Pkg),
 }
 
 /// Synchronize installed packages with the package list.
-#[derive(Debug, StructOpt)]
+#[derive(Clone, Debug, StructOpt)]
 pub struct Pkg {
     /// remove all unneeded packages
     #[structopt(short = "c", long)]
