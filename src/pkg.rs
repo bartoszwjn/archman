@@ -40,7 +40,7 @@ use anyhow::{anyhow, ensure, Context};
 use regex::Regex;
 
 use crate::{
-    args::Pkg,
+    config::Pkg,
     pacman::{self, InstallReason, PacmanError, QueryFilter},
 };
 
