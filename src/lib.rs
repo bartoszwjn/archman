@@ -1,4 +1,4 @@
-//! ArchMan - a configuration utility for my specific ArchLinux setup.
+//! ArchMan - a configuration utility for my specific Arch Linux setup.
 
 pub mod args;
 mod pacman;

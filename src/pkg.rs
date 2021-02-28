@@ -30,7 +30,7 @@ use std::{
     collections::HashSet,
     env,
     fs::{self, File, OpenOptions},
-    io::{BufRead, BufReader, BufWriter, Write},
+    io::{BufRead, BufReader, Write},
     path::Path,
     process::Command,
 };
@@ -255,15 +255,13 @@ fn write_as_root(path: &Path, contents: &str) -> anyhow::Result<()> {
     let mut tmp_path = env::temp_dir();
     tmp_path.push("archman_xkb_types");
 
-    BufWriter::new(
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp_path)
-            .context("Failed to create temporary file")?,
-    )
-    .write_all(contents.as_bytes())
-    .context("Failed to write to temporary file")?;
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp_path)
+        .context("Failed to create temporary file")?
+        .write_all(contents.as_bytes())
+        .context("Failed to write to temporary file")?;
 
     let status = Command::new("sudo")
         .arg("mv")
