@@ -117,7 +117,7 @@ where
 /// to mark the start and end of the command output.
 fn run_for_status(mut cmd: Command) -> Result<()> {
     // TODO: add colors and echo the executed command
-    println!("\n===== RUNNING PACMAN =====");
+    println!("======== RUNNING PACMAN ========");
     let status = cmd.status();
     println!("===== END OF PACMAN OUTPUT =====\n");
     match status {
@@ -156,6 +156,13 @@ pub fn query(filter: QueryFilter) -> Result<HashSet<String>> {
             Err(_) => Err(PacmanError::NonUtf8Output(output.stdout)),
         }
     } else {
-        Err(PacmanError::ExitFailure)
+        // `pacman` returns with an error when the query has no results. We do not want to treat it
+        // as an error, so we check if there was any output. No output means that there was no real
+        // error.
+        if output.stdout.is_empty() && output.stderr.is_empty() {
+            Ok(HashSet::new())
+        } else {
+            Err(PacmanError::ExitFailure)
+        }
     }
 }

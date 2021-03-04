@@ -52,6 +52,9 @@ struct OrganizedPackages<'a> {
     to_remove: Vec<&'a str>,
 }
 
+/// The colour of the printed info text.
+const INFO_COLOUR: Colour = Colour::Blue;
+
 /// Synchronizes installed packages with the package list.
 ///
 /// See module documentation for the details.
@@ -61,7 +64,7 @@ pub fn synchronize_packages(cfg: Pkg) -> anyhow::Result<()> {
     let (installed_explicitly, installed_as_deps) =
         query_installed_packages().context("Failed to query for installed packages")?;
     println!(
-        "Packages: {} declared, {} explicitly installed, {} installed as dependencies",
+        "Packages: {} declared, {} explicitly installed, {} installed as dependencies\n",
         declared.len(),
         installed_explicitly.len(),
         installed_as_deps.len(),
@@ -159,16 +162,20 @@ fn organize_packages<'a>(
 fn update_database(organized: &OrganizedPackages) -> anyhow::Result<()> {
     if !organized.to_mark_as_explicit.is_empty() {
         println!(
-            "Marking {} packages as explicitly installed",
+            "{}Marking {} packages as explicitly installed{}",
+            INFO_COLOUR.prefix(),
             organized.to_mark_as_explicit.len(),
+            INFO_COLOUR.suffix(),
         );
         pacman::database(InstallReason::Explicit, &organized.to_mark_as_explicit)?;
     }
 
     if !organized.to_remove.is_empty() {
         println!(
-            "Marking {} packages as installed as dependencies",
+            "{}Marking {} packages as installed as dependencies{}",
+            INFO_COLOUR.prefix(),
             organized.to_remove.len(),
+            INFO_COLOUR.suffix(),
         );
         pacman::database(InstallReason::Dependency, &organized.to_remove)?;
     }
@@ -178,11 +185,17 @@ fn update_database(organized: &OrganizedPackages) -> anyhow::Result<()> {
 
 /// Updates installed packages and installs new ones.
 fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Result<()> {
-    println!(
-        "Updating package databases and installing {} new packages ({} system upgrade)",
-        to_install.len(),
-        if upgrade { "with" } else { "without" },
-    );
+    print!("{}", INFO_COLOUR.prefix());
+    if upgrade {
+        print!("Upgrading installed packages");
+    } else {
+        print!("Updating package databases");
+    }
+    if !to_install.is_empty() {
+        print!(" and installing {} new packages", to_install.len());
+    }
+    println!("{}", INFO_COLOUR.suffix());
+
     match pacman::sync(upgrade, to_install) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
@@ -198,13 +211,12 @@ fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Re
 
 /// Queries for packages installed as dependencies that are not required by other packages.
 fn query_unneeded_packages() -> anyhow::Result<HashSet<String>> {
-    let unneeded = pacman::query(QueryFilter {
+    pacman::query(QueryFilter {
         install_reason: Some(InstallReason::Dependency),
         unrequired: true,
         ..QueryFilter::default()
-    })?;
-    println!("Found {} unneeded packages", unneeded.len());
-    Ok(unneeded)
+    })
+    .map_err(Into::into)
 }
 
 /// Recursively removes given packages, if they are not needed by other packages.
@@ -212,7 +224,13 @@ fn remove_packages(to_remove: &[&str]) -> anyhow::Result<()> {
     if to_remove.is_empty() {
         return Ok(());
     }
-    println!("Removing {} packages", to_remove.len());
+
+    println!(
+        "{}Removing {} packages{}",
+        INFO_COLOUR.prefix(),
+        to_remove.len(),
+        INFO_COLOUR.suffix()
+    );
     match pacman::remove(to_remove) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
