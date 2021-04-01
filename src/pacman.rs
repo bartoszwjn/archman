@@ -1,4 +1,4 @@
-//! Running `pacman` - the Arch Linux package manager.
+//! Running `pacman` --- the Arch Linux package manager.
 //!
 //! The functions in this module run the respective `pacman` subcommands. Additional flags are given
 //! based on the function arguments. Subcommands that require root privileges are run with `sudo`.
@@ -10,6 +10,7 @@ use std::{
     process::{Command, Stdio},
 };
 
+use ansi_term::Style;
 use thiserror::Error;
 
 /// The return type of all `pacman` calls.
@@ -61,7 +62,7 @@ where
     S: AsRef<OsStr>,
 {
     let mut cmd = Command::new("sudo");
-    cmd.arg("pacman").arg("-D");
+    cmd.args(&["pacman", "--color=auto", "-D"]);
     match install_reason {
         InstallReason::Explicit => cmd.arg("--asexplicit"),
         InstallReason::Dependency => cmd.arg("--asdeps"),
@@ -84,7 +85,7 @@ where
     S: AsRef<OsStr>,
 {
     let mut cmd = Command::new("sudo");
-    cmd.arg("pacman").arg("-S").arg("-y");
+    cmd.args(&["pacman", "--color=auto", "-S", "-y"]);
     if system_upgrade {
         cmd.arg("-u");
     }
@@ -105,7 +106,7 @@ where
     S: AsRef<OsStr>,
 {
     let mut cmd = Command::new("sudo");
-    cmd.arg("pacman").arg("-R").arg("-s").arg("-u");
+    cmd.args(&["pacman", "--color=auto", "-R", "-s", "-u"]);
     cmd.args(packages);
 
     run_for_status(cmd)
@@ -116,10 +117,10 @@ where
 /// The input and output streams of the command are inherited from the current process. Emits output
 /// to mark the start and end of the command output.
 fn run_for_status(mut cmd: Command) -> Result<()> {
-    // TODO: add colors and echo the executed command
-    println!("======== RUNNING PACMAN ========");
+    let style = Style::new().bold();
+    println_styled!(style, "======== RUNNING PACMAN ========");
     let status = cmd.status();
-    println!("===== END OF PACMAN OUTPUT =====\n");
+    println_styled!(style, "===== END OF PACMAN OUTPUT =====\n");
     match status {
         Ok(exit_status) if exit_status.success() => Ok(()),
         Ok(_) => Err(PacmanError::ExitFailure),
@@ -133,7 +134,7 @@ fn run_for_status(mut cmd: Command) -> Result<()> {
 /// inherited from the current process.
 pub fn query(filter: QueryFilter) -> Result<HashSet<String>> {
     let mut cmd = Command::new("pacman");
-    cmd.arg("-Q").arg("-q").arg("-n");
+    cmd.args(&["-Q", "-q", "-n"]);
     if let Some(install_reason) = filter.install_reason {
         match install_reason {
             InstallReason::Explicit => cmd.arg("-e"),

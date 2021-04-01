@@ -1,4 +1,4 @@
-//! Managing installed packages.
+//! Synchronizing installed packages.
 //!
 //! The end goal is that packages declared in the package file are all installed, and their install
 //! reason is `explicitly installed`. All packages that are not explicitly installed and are not
@@ -35,12 +35,12 @@ use std::{
     process::Command,
 };
 
-use ansi_term::Colour;
+use ansi_term::{Colour, Style};
 use anyhow::{anyhow, ensure, Context};
 use regex::Regex;
 
 use crate::{
-    config::Pkg,
+    config::Sync,
     pacman::{self, InstallReason, PacmanError, QueryFilter},
 };
 
@@ -52,13 +52,38 @@ struct OrganizedPackages<'a> {
     to_remove: Vec<&'a str>,
 }
 
+/// This is the only way to create a style in a const context.
+const DEFAULT_STYLE: Style = Style {
+    foreground: None,
+    background: None,
+    is_bold: false,
+    is_dimmed: false,
+    is_italic: false,
+    is_underline: false,
+    is_blink: false,
+    is_reverse: false,
+    is_hidden: false,
+    is_strikethrough: false,
+};
+
 /// The colour of the printed info text.
-const INFO_COLOUR: Colour = Colour::Blue;
+const INFO_STYLE: Style = Style {
+    foreground: Some(Colour::Blue),
+    is_bold: true,
+    ..DEFAULT_STYLE
+};
+
+/// The colour of the printed warnings.
+const WARNING_STYLE: Style = Style {
+    foreground: Some(Colour::Yellow),
+    is_bold: true,
+    ..DEFAULT_STYLE
+};
 
 /// Synchronizes installed packages with the package list.
 ///
 /// See module documentation for the details.
-pub fn synchronize_packages(cfg: Pkg) -> anyhow::Result<()> {
+pub(crate) fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
     let declared =
         parse_package_file(&cfg.package_list).context("Failed to read the package list")?;
     let (installed_explicitly, installed_as_deps) =
@@ -79,7 +104,7 @@ pub fn synchronize_packages(cfg: Pkg) -> anyhow::Result<()> {
         let unneeded =
             query_unneeded_packages().context("Failed to query for unneeded packages")?;
         let mut unneeded = unneeded.iter().map(String::as_str).collect::<Vec<_>>();
-        unneeded.sort();
+        unneeded.sort_unstable();
         remove_packages(&unneeded).context("Failed to remove unneeded packages")?;
     } else {
         remove_packages(&organized.to_remove).context("Failed to remove unneeded packages")?;
@@ -147,9 +172,9 @@ fn organize_packages<'a>(
     }
 
     // sort them so that they look nicer if we print them
-    to_remove.sort();
-    to_install.sort();
-    to_mark_as_explicit.sort();
+    to_remove.sort_unstable();
+    to_install.sort_unstable();
+    to_mark_as_explicit.sort_unstable();
 
     OrganizedPackages {
         to_install,
@@ -161,21 +186,19 @@ fn organize_packages<'a>(
 /// Updates the install reason of already installed packages.
 fn update_database(organized: &OrganizedPackages) -> anyhow::Result<()> {
     if !organized.to_mark_as_explicit.is_empty() {
-        println!(
-            "{}Marking {} packages as explicitly installed{}",
-            INFO_COLOUR.prefix(),
+        println_styled!(
+            INFO_STYLE,
+            "Marking {} packages as explicitly installed",
             organized.to_mark_as_explicit.len(),
-            INFO_COLOUR.suffix(),
         );
         pacman::database(InstallReason::Explicit, &organized.to_mark_as_explicit)?;
     }
 
     if !organized.to_remove.is_empty() {
-        println!(
-            "{}Marking {} packages as installed as dependencies{}",
-            INFO_COLOUR.prefix(),
+        println_styled!(
+            INFO_STYLE,
+            "Marking {} packages as installed as dependencies",
             organized.to_remove.len(),
-            INFO_COLOUR.suffix(),
         );
         pacman::database(InstallReason::Dependency, &organized.to_remove)?;
     }
@@ -185,23 +208,27 @@ fn update_database(organized: &OrganizedPackages) -> anyhow::Result<()> {
 
 /// Updates installed packages and installs new ones.
 fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Result<()> {
-    print!("{}", INFO_COLOUR.prefix());
-    if upgrade {
-        print!("Upgrading installed packages");
-    } else {
-        print!("Updating package databases");
-    }
-    if !to_install.is_empty() {
-        print!(" and installing {} new packages", to_install.len());
-    }
-    println!("{}", INFO_COLOUR.suffix());
+    println_styled!(
+        INFO_STYLE,
+        "{}{}",
+        if upgrade {
+            "Upgrading installed packages"
+        } else {
+            "Updating package databases"
+        },
+        if !to_install.is_empty() {
+            format!(" and installing {} new packages", to_install.len())
+        } else {
+            "".into()
+        },
+    );
 
     match pacman::sync(upgrade, to_install) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
-            println!(
-                "{}",
-                Colour::Yellow.paint("pacman did not exit successfully, continuing..."),
+            eprintln_styled!(
+                WARNING_STYLE,
+                "pacman did not exit successfully, continuing...",
             );
             Ok(())
         }
@@ -225,18 +252,13 @@ fn remove_packages(to_remove: &[&str]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!(
-        "{}Removing {} packages{}",
-        INFO_COLOUR.prefix(),
-        to_remove.len(),
-        INFO_COLOUR.suffix()
-    );
+    println_styled!(INFO_STYLE, "Removing {} packages", to_remove.len(),);
     match pacman::remove(to_remove) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
-            println!(
-                "{}",
-                Colour::Yellow.paint("pacman did not exit successfully, continuing..."),
+            eprintln_styled!(
+                WARNING_STYLE,
+                "pacman did not exit successfully, continuing...",
             );
             Ok(())
         }
@@ -260,7 +282,7 @@ fn patch_xkb_types(path: &Path) -> anyhow::Result<()> {
     if !contents.contains("include \"ed\"") {
         println!("Patching up {:?}", path);
         // regex match ensures the string contains '}'
-        let last_line_start = contents.find("}").unwrap();
+        let last_line_start = contents.find('}').unwrap();
         contents.insert_str(last_line_start, "    include \"ed\"\n");
         write_as_root(path, &contents)?;
     }

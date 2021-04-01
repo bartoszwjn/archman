@@ -7,7 +7,13 @@ fn main() -> ! {
         match archman::run(args) {
             Ok(()) => 0,
             Err(err) => {
-                println!("\n{} {:?}", Colour::Red.bold().paint("Error:"), err);
+                let is_tty = atty::is(atty::Stream::Stderr);
+                let style = if is_tty {
+                    Colour::Red.bold()
+                } else {
+                    Default::default()
+                };
+                eprintln!("\n{} {:?}", style.paint("error:"), err);
                 1
             }
         }

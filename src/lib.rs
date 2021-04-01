@@ -1,19 +1,25 @@
-//! ArchMan - a configuration utility for my specific Arch Linux setup.
+//! ArchMan --- a configuration utility for my specific Arch Linux setup.
+//!
+//! Documentation for specific modules provides more information.
 
-mod config;
+#[macro_use]
+mod util;
+
+pub mod config;
 mod pacman;
-mod pkg;
+pub mod sync;
 
 use config::{Args, Subcommand};
 
 /// Runs the program, given the parsed command line arguments.
+#[doc(hidden)]
 pub fn run(args: Args) -> anyhow::Result<()> {
     let config = config::read_config_file(args.config)?;
 
     match args.subcommand {
-        Subcommand::Pkg(pkg_args) => {
-            let pkg_config = config::merge_pkg_config(pkg_args, config.pkg)?;
-            pkg::synchronize_packages(pkg_config)
+        Subcommand::Sync(sync_args) => {
+            let sync_config = config::merge_sync_config(sync_args, config)?;
+            sync::synchronize_packages(sync_config)
         }
     }
 }

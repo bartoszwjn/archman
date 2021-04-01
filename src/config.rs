@@ -26,7 +26,7 @@ use std::{
     env,
     ffi::OsString,
     fs::File,
-    io::Read,
+    io::{self, Read},
     path::{self, PathBuf},
 };
 
@@ -49,12 +49,12 @@ pub struct Args {
 #[derive(Clone, Debug, StructOpt)]
 #[structopt(about = "A configuration utility for my specific Arch Linux setup")]
 pub enum Subcommand {
-    Pkg(PkgArgs),
+    Sync(SyncArgs),
 }
 
 /// Synchronize installed packages with the package list.
 #[derive(Clone, Debug, StructOpt)]
-pub struct PkgArgs {
+pub struct SyncArgs {
     /// Remove all unneeded packages.
     #[structopt(short = "c", long)]
     pub cleanup: bool,
@@ -73,23 +73,15 @@ pub struct PkgArgs {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Configuration specific to the `pkg` subcommand.
-    pub pkg: Option<PkgConfig>,
-}
-
-/// All values specific to the `pkg` subcommand that can be specified in the configuration file.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PkgConfig {
     /// Path to the package list.
     pub package_list: Option<String>,
     /// Path to the xkb types file.
     pub xkb_types: Option<String>,
 }
 
-/// Configuration of the `pkg` subcommand assembled from command line and configuration file.
+/// Configuration of the `sync` subcommand assembled from command line and configuration file.
 #[derive(Clone, Debug)]
-pub struct Pkg {
+pub(crate) struct Sync {
     /// Whether to remove all unneeded packages.
     pub cleanup: bool,
     /// Whether to skip upgrading already installed packages.
@@ -103,7 +95,7 @@ pub struct Pkg {
 /// Reads the configuration file from the given path or the default path.
 ///
 /// If no path is given and the default path does not point to a file, an empty config is returned.
-pub fn read_config_file(path: Option<PathBuf>) -> anyhow::Result<Config> {
+pub(crate) fn read_config_file(path: Option<PathBuf>) -> anyhow::Result<Config> {
     let path_supplied = path.is_some();
     let effective_path = match path {
         Some(path) => path,
@@ -115,10 +107,11 @@ pub fn read_config_file(path: Option<PathBuf>) -> anyhow::Result<Config> {
 
     let mut file = match File::open(&effective_path) {
         Ok(file) => file,
-        Err(err) if path_supplied => {
-            return Err(err).context("Failed to open the configuration file")
+        Err(err) if !path_supplied && err.kind() == io::ErrorKind::NotFound => {
+            // If the default path doesn't exist, use the empty configuration
+            return Ok(Config::default());
         }
-        Err(_) => return Ok(Config::default()),
+        Err(err) => return Err(err).context("Failed to open the configuration file"),
     };
 
     let mut contents = String::new();
@@ -138,15 +131,15 @@ fn default_config_path() -> Option<PathBuf> {
     Some(path)
 }
 
-/// Merges the command line arguments and configuration file into configuration of `pkg` subcommand.
-pub fn merge_pkg_config(args: PkgArgs, config: Option<PkgConfig>) -> anyhow::Result<Pkg> {
-    let config = config.unwrap_or_default();
+/// Merges the command line arguments and configuration file into configuration of `sync`
+/// subcommand.
+pub(crate) fn merge_sync_config(args: SyncArgs, config: Config) -> anyhow::Result<Sync> {
     let package_list = Option::or(args.package_list, config.package_list)
         .ok_or_else(|| anyhow!("Package list file was not specified"))?;
     let xkb_types = Option::or(args.xkb_types, config.xkb_types)
         .ok_or_else(|| anyhow!("xkb types file was not specified"))?;
 
-    Ok(Pkg {
+    Ok(Sync {
         cleanup: args.cleanup,
         no_upgrade: args.no_upgrade,
         package_list: substitute_tilde(package_list).into(),
@@ -174,7 +167,7 @@ fn substitute_tilde(path: String) -> OsString {
             Some(home) => {
                 let mut result = home;
                 result.push(rest);
-                result.into()
+                result
             }
         },
     }

@@ -10,6 +10,7 @@ description = "A configuration utility for my specific Arch Linux setup"
 [dependencies]
 ansi_term = "0.12.1"
 anyhow = "1.0.38"
+atty = "0.2.14"
 regex = "1.4.3"
 serde = { version = "1.0.123", features = ["derive"] }
 structopt = "0.3.21"
