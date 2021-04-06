@@ -68,6 +68,9 @@ pub struct SyncArgs {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// The groups of packages that should be installed on our system.
+    #[serde(default)]
+    pub package_groups: Vec<String>,
     /// The packages that should be installed on our system.
     pub packages: Option<Packages>,
     /// Path to the xkb types file.
@@ -95,6 +98,8 @@ pub(crate) struct Sync {
     pub cleanup: bool,
     /// Whether to skip upgrading already installed packages.
     pub no_upgrade: bool,
+    /// The list of declared package groups.
+    pub package_groups: Vec<String>,
     /// The list of declared packages.
     pub packages: HashSet<String>,
     /// Path to the xkb types file.
@@ -153,6 +158,7 @@ pub(crate) fn merge_sync_config(args: SyncArgs, config: Config) -> anyhow::Resul
     Ok(Sync {
         cleanup: args.cleanup,
         no_upgrade: args.no_upgrade,
+        package_groups: config.package_groups,
         packages,
         xkb_types: substitute_tilde(xkb_types).into(),
     })

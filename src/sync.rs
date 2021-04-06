@@ -21,12 +21,13 @@
 //! - check if the xkb_types file needs to be patched (TODO: run arbitrary scripts at this point?)
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env,
     fs::{self, OpenOptions},
     io::Write,
     path::Path,
     process::Command,
+    rc::Rc,
 };
 
 use anyhow::{anyhow, ensure, Context};
@@ -49,15 +50,18 @@ struct OrganizedPackages<'a> {
 ///
 /// See module documentation for the details.
 pub(crate) fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
+    let group_packages = pacman::groups(cfg.package_groups)
+        .context("Failed to query for packages that belong to the declared package groups")?;
+    let declared = merge_declared_groups(cfg.packages, group_packages);
     let (installed_explicitly, installed_as_deps) =
         query_installed_packages().context("Failed to query for installed packages")?;
     println!(
         "Packages: {} declared, {} explicitly installed, {} installed as dependencies\n",
-        cfg.packages.len(),
+        declared.len(),
         installed_explicitly.len(),
         installed_as_deps.len(),
     );
-    let organized = organize_packages(&cfg.packages, &installed_explicitly, &installed_as_deps);
+    let organized = organize_packages(&declared, &installed_explicitly, &installed_as_deps);
 
     update_database(&organized).context("Failed to update package database")?;
     update_and_install_packages(!cfg.no_upgrade, &organized.to_install)
@@ -76,6 +80,22 @@ pub(crate) fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
     patch_xkb_types(&cfg.xkb_types).context("Failed to patch the xkb types file")?;
 
     Ok(())
+}
+
+/// Adds packages that are members of declared groups to the list of declared packages.
+fn merge_declared_groups(
+    mut declared_packages: HashSet<String>,
+    group_packages: HashMap<String, Rc<str>>,
+) -> HashSet<String> {
+    for (package, group) in group_packages {
+        if let Some(duplicate) = declared_packages.replace(package) {
+            warn!(
+                "Declared package {:?} is also a member of the declared group {:?}",
+                duplicate, group,
+            );
+        }
+    }
+    declared_packages
 }
 
 /// Queries for packages currently installed explicitly or as dependencies.

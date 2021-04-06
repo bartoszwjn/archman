@@ -3,7 +3,13 @@
 //! The functions in this module run the respective `pacman` subcommands. Additional flags are given
 //! based on the function arguments. Subcommands that require root privileges are run with `sudo`.
 
-use std::{collections::HashSet, ffi::OsStr, io, process::Command};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsStr,
+    io,
+    process::Command,
+    rc::Rc,
+};
 
 use thiserror::Error;
 
@@ -158,4 +164,30 @@ pub fn query(filter: QueryFilter) -> Result<HashSet<String>> {
             Err(PacmanError::ExitFailure)
         }
     }
+}
+
+/// `pacman -Sg`
+///
+/// Retrieves the list of packages that belong to the given `groups`.
+pub fn groups<G, S>(groups: G) -> Result<HashMap<String, Rc<str>>>
+where
+    G: IntoIterator<Item = S>,
+    S: Into<Rc<str>>,
+{
+    let mut packages = HashMap::new();
+    for group in groups {
+        let group = group.into();
+        let mut cmd = Command::new("pacman");
+        cmd.args(&["-S", "-g", "-q", &group]);
+        let output = cmd.output()?;
+        if output.status.success() {
+            match std::str::from_utf8(&output.stdout) {
+                Ok(s) => packages.extend(s.lines().map(|s| (s.to_owned(), Rc::clone(&group)))),
+                Err(_) => return Err(PacmanError::NonUtf8Output(output.stdout)),
+            }
+        } else {
+            return Err(PacmanError::ExitFailure);
+        };
+    }
+    Ok(packages)
 }
