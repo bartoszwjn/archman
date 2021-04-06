@@ -2,6 +2,8 @@
 //!
 //! Documentation for specific modules provides more information.
 
+#![warn(rust_2018_idioms)]
+
 #[macro_use]
 mod util;
 

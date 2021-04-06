@@ -1,36 +1,30 @@
 //! Synchronizing installed packages.
 //!
-//! The end goal is that packages declared in the package file are all installed, and their install
-//! reason is `explicitly installed`. All packages that are not explicitly installed and are not
-//! dependencies of other packages should be removed. Sometimes that might not be what we want, e.g.
-//! for packages that are build dependencies of some AUR packages. One day this might be addressed.
+//! The end goal is that packages declared in the configuration file are all installed, and their
+//! install reason is `explicitly installed`. All packages that are not explicitly installed and are
+//! not dependencies of other packages should be removed. Sometimes that might not be what we want,
+//! e.g. for packages that are build dependencies of some AUR packages. One day this might be
+//! addressed.
 //!
 //! Right now we do not concern ourselves with AUR packages.
 //!
 //! For now this is what we do:
-//! - read the list of packages from the package file
 //! - get the list of explicitly installed packages
 //! - get the list of packages installed as dependencies
 //! - mark declared packages that are installed as dependencies as explicitly installed
 //! - mark explicitly installed packages that are not declared as installed as dependencies
 //! - update packages and install declared packages that are not installed
-//! - if doing a cleanup, get the list of packages installed as dependencies that are not needed
-//!   and remove them recursively
+//! - if doing a cleanup, get the list of packages installed as dependencies that are not needed and
+//!   remove them recursively
 //! - if not doing a cleanup, recursively remove the packages that were explicitly installed before,
 //!   are no longer in the list of packages and are not dependencies of other installed packages
 //! - check if the xkb_types file needs to be patched (TODO: run arbitrary scripts at this point?)
-//!
-//! # Packages file
-//!
-//! The file should be a UTF-8 encoded text file. In the file any occurrence of the `#` character
-//! starts a comment that lasts until the end of the line. After comments are ignored, the file is
-//! read as a whitespace separated list of package names.
 
 use std::{
     collections::HashSet,
     env,
-    fs::{self, File, OpenOptions},
-    io::{BufRead, BufReader, Write},
+    fs::{self, OpenOptions},
+    io::Write,
     path::Path,
     process::Command,
 };
@@ -84,17 +78,15 @@ const WARNING_STYLE: Style = Style {
 ///
 /// See module documentation for the details.
 pub(crate) fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
-    let declared =
-        parse_package_file(&cfg.package_list).context("Failed to read the package list")?;
     let (installed_explicitly, installed_as_deps) =
         query_installed_packages().context("Failed to query for installed packages")?;
     println!(
         "Packages: {} declared, {} explicitly installed, {} installed as dependencies\n",
-        declared.len(),
+        cfg.packages.len(),
         installed_explicitly.len(),
         installed_as_deps.len(),
     );
-    let organized = organize_packages(&declared, &installed_explicitly, &installed_as_deps);
+    let organized = organize_packages(&cfg.packages, &installed_explicitly, &installed_as_deps);
 
     update_database(&organized).context("Failed to update package database")?;
     update_and_install_packages(!cfg.no_upgrade, &organized.to_install)
@@ -113,25 +105,6 @@ pub(crate) fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
     patch_xkb_types(&cfg.xkb_types).context("Failed to patch the xkb types file")?;
 
     Ok(())
-}
-
-/// Reads the set declared packages from the given file.
-///
-/// See the module documentation for the description of the file format.
-fn parse_package_file(path: &Path) -> anyhow::Result<HashSet<String>> {
-    let file = BufReader::new(File::open(path).context("Failed to open packages file")?);
-
-    let mut packages = HashSet::new();
-    for line in file.lines() {
-        let line = line.context("Failed to parse packages file")?;
-        let without_comment = match line.find('#') {
-            Some(ix) => &line[..ix],
-            None => &line,
-        };
-        packages.extend(without_comment.split_whitespace().map(ToOwned::to_owned))
-    }
-
-    Ok(packages)
 }
 
 /// Queries for packages currently installed explicitly or as dependencies.
@@ -184,7 +157,7 @@ fn organize_packages<'a>(
 }
 
 /// Updates the install reason of already installed packages.
-fn update_database(organized: &OrganizedPackages) -> anyhow::Result<()> {
+fn update_database(organized: &OrganizedPackages<'_>) -> anyhow::Result<()> {
     if !organized.to_mark_as_explicit.is_empty() {
         println_styled!(
             INFO_STYLE,

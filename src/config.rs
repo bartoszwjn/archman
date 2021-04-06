@@ -1,11 +1,8 @@
 //! Program configuration.
 //!
-//! The program is configured with command line arguments and a configuration file. Everything can
-//! be configured through the command line. That is not the case for the configuration file: it is
-//! meant for specifying things that do not change often and are too long to pass as command line
-//! arguments every time the program is run.
-//!
-//! Some values must be specified either through the command line or the configuration file. Values
+//! The program is configured with command line arguments and a configuration file. Some things can
+//! only be configured with command line arguments while others only with the configuration file.
+//! Some values can be specified either through the command line or the configuration file. Values
 //! specified through the command line take precedence. Only values specific to the subcommand used
 //! must be specified.
 //!
@@ -23,6 +20,7 @@
 //! documentation of [`Config`] for all values that can be configured with the configuration file.
 
 use std::{
+    collections::{HashMap, HashSet},
     env,
     ffi::OsString,
     fs::File,
@@ -61,9 +59,6 @@ pub struct SyncArgs {
     /// Do not upgrade packages.
     #[structopt(long)]
     pub no_upgrade: bool,
-    /// Path to the package list file.
-    #[structopt(short = "p", long)]
-    pub package_list: Option<String>,
     /// Path to the xkb types file.
     #[structopt(long)]
     pub xkb_types: Option<String>,
@@ -73,10 +68,24 @@ pub struct SyncArgs {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Path to the package list.
-    pub package_list: Option<String>,
+    /// The packages that should be installed on our system.
+    pub packages: Option<Packages>,
     /// Path to the xkb types file.
     pub xkb_types: Option<String>,
+}
+
+/// The list of packages that should be installed.
+///
+/// The package list can be grouped into named or unnamed groups, with arbitrary nesting.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum Packages {
+    /// A name of a single package that should be installed.
+    Package(String),
+    /// A group of package lists, where each list has a name.
+    Map(HashMap<String, Packages>),
+    /// A group of package lists, where lists don't have names.
+    Array(Vec<Packages>),
 }
 
 /// Configuration of the `sync` subcommand assembled from command line and configuration file.
@@ -86,8 +95,8 @@ pub(crate) struct Sync {
     pub cleanup: bool,
     /// Whether to skip upgrading already installed packages.
     pub no_upgrade: bool,
-    /// Path to the package list.
-    pub package_list: PathBuf,
+    /// The list of declared packages.
+    pub packages: HashSet<String>,
     /// Path to the xkb types file.
     pub xkb_types: PathBuf,
 }
@@ -134,15 +143,17 @@ fn default_config_path() -> Option<PathBuf> {
 /// Merges the command line arguments and configuration file into configuration of `sync`
 /// subcommand.
 pub(crate) fn merge_sync_config(args: SyncArgs, config: Config) -> anyhow::Result<Sync> {
-    let package_list = Option::or(args.package_list, config.package_list)
-        .ok_or_else(|| anyhow!("Package list file was not specified"))?;
+    let packages = config
+        .packages
+        .ok_or_else(|| anyhow!("Package list file was not specified"))?
+        .into_set();
     let xkb_types = Option::or(args.xkb_types, config.xkb_types)
         .ok_or_else(|| anyhow!("xkb types file was not specified"))?;
 
     Ok(Sync {
         cleanup: args.cleanup,
         no_upgrade: args.no_upgrade,
-        package_list: substitute_tilde(package_list).into(),
+        packages,
         xkb_types: substitute_tilde(xkb_types).into(),
     })
 }
@@ -170,5 +181,35 @@ fn substitute_tilde(path: String) -> OsString {
                 result
             }
         },
+    }
+}
+
+impl Packages {
+    /// Flattens the nested list of packages into a `HashSet`.
+    fn into_set(self) -> HashSet<String> {
+        let mut set = HashSet::new();
+        self.add_to_set(&mut set);
+        set
+    }
+
+    /// Adds all packages from `self` to the given `HashSet`.
+    fn add_to_set(self, set: &mut HashSet<String>) {
+        match self {
+            Packages::Package(package) => {
+                if let Some(duplicate) = set.replace(package) {
+                    log::warn!("Package {:?} is declared multiple times", duplicate);
+                }
+            }
+            Packages::Map(map) => {
+                for (_, packages) in map {
+                    packages.add_to_set(set);
+                }
+            }
+            Packages::Array(array) => {
+                for packages in array {
+                    packages.add_to_set(set);
+                }
+            }
+        }
     }
 }

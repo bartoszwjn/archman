@@ -3,12 +3,7 @@
 //! The functions in this module run the respective `pacman` subcommands. Additional flags are given
 //! based on the function arguments. Subcommands that require root privileges are run with `sudo`.
 
-use std::{
-    collections::HashSet,
-    ffi::OsStr,
-    io,
-    process::{Command, Stdio},
-};
+use std::{collections::HashSet, ffi::OsStr, io, process::Command};
 
 use ansi_term::Style;
 use thiserror::Error;
