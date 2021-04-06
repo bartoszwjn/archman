@@ -147,7 +147,6 @@ pub fn query(filter: QueryFilter) -> Result<HashSet<String>> {
     if filter.outdated {
         cmd.arg("-u");
     };
-    cmd.stderr(Stdio::inherit());
 
     let output = cmd.output()?;
 
