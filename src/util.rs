@@ -1,37 +1,51 @@
 //! Utilities.
 
-/// Prints `s` to `stdout` adding the given [`Style`] or [`Colour`] if `stdout` is connected to a
-/// terminal.
-macro_rules! println_styled {
-    ($style:expr, $($rest:expr),+ $(,)?) => {
+/// Prints a warning to `stderr` using colours if `stderr` is connected to a terminal.
+macro_rules! warn {
+    ($($fmt:expr),+ $(,)?) => {
         {
-            let style = $style;
-            let style = if ::atty::is(::atty::Stream::Stdout) {
-                style.into()
+            let use_style = ::atty::is(::atty::Stream::Stderr);
+            let style = if use_style {
+                ::ansi_term::Colour::Yellow.bold()
             } else {
-                ::ansi_term::Style::default()
+                ::ansi_term::Style::new()
+            };
+            eprint!("{}warning:{} ", style.prefix(), style.suffix());
+            eprintln!($($fmt),+);
+        }
+    }
+}
+
+/// Print an info string to `stdout` using colours if `stdout` is connected to a terminal.
+macro_rules! info {
+    ($($fmt:expr),+ $(,)?) => {
+        {
+            let use_style = ::atty::is(::atty::Stream::Stdout);
+            let style = if use_style {
+                ::ansi_term::Colour::Blue.bold()
+            } else {
+                ::ansi_term::Style::new()
             };
             print!("{}", style.prefix());
-            print!($($rest),+);
+            print!($($fmt),+);
             println!("{}", style.suffix());
         }
     }
 }
 
-/// Prints `s` to `stderr` adding the given [`Style`] or [`Colour`] if `stderr` is connected to a
-/// terminal.
-macro_rules! eprintln_styled {
-    ($style:expr, $($rest:expr),+ $(,)?) => {
+/// Prints a string `stdout` using a bold style if `stdout` is connected to a terminal.
+macro_rules! bold {
+    ($($fmt:expr),+ $(,)?) => {
         {
-            let style = $style;
-            let style = if ::atty::is(::atty::Stream::Stdout) {
-                style.into()
+            let use_style = ::atty::is(::atty::Stream::Stdout);
+            let style = if use_style {
+                ::ansi_term::Style::new().bold()
             } else {
-                ::ansi_term::Style::default()
+                ::ansi_term::Style::new()
             };
-            eprint!("{}", style.prefix());
-            eprint!($($rest),+);
-            eprintln!("{}", style.suffix());
+            print!("{}", style.prefix());
+            print!($($fmt),+);
+            println!("{}", style.suffix());
         }
     }
 }

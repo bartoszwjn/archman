@@ -197,7 +197,7 @@ impl Packages {
         match self {
             Packages::Package(package) => {
                 if let Some(duplicate) = set.replace(package) {
-                    log::warn!("Package {:?} is declared multiple times", duplicate);
+                    warn!("Package {:?} is declared multiple times", duplicate);
                 }
             }
             Packages::Map(map) => {

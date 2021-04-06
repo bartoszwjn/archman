@@ -29,7 +29,6 @@ use std::{
     process::Command,
 };
 
-use ansi_term::{Colour, Style};
 use anyhow::{anyhow, ensure, Context};
 use regex::Regex;
 
@@ -45,34 +44,6 @@ struct OrganizedPackages<'a> {
     to_mark_as_explicit: Vec<&'a str>,
     to_remove: Vec<&'a str>,
 }
-
-/// This is the only way to create a style in a const context.
-const DEFAULT_STYLE: Style = Style {
-    foreground: None,
-    background: None,
-    is_bold: false,
-    is_dimmed: false,
-    is_italic: false,
-    is_underline: false,
-    is_blink: false,
-    is_reverse: false,
-    is_hidden: false,
-    is_strikethrough: false,
-};
-
-/// The colour of the printed info text.
-const INFO_STYLE: Style = Style {
-    foreground: Some(Colour::Blue),
-    is_bold: true,
-    ..DEFAULT_STYLE
-};
-
-/// The colour of the printed warnings.
-const WARNING_STYLE: Style = Style {
-    foreground: Some(Colour::Yellow),
-    is_bold: true,
-    ..DEFAULT_STYLE
-};
 
 /// Synchronizes installed packages with the package list.
 ///
@@ -159,8 +130,7 @@ fn organize_packages<'a>(
 /// Updates the install reason of already installed packages.
 fn update_database(organized: &OrganizedPackages<'_>) -> anyhow::Result<()> {
     if !organized.to_mark_as_explicit.is_empty() {
-        println_styled!(
-            INFO_STYLE,
+        info!(
             "Marking {} packages as explicitly installed",
             organized.to_mark_as_explicit.len(),
         );
@@ -168,8 +138,7 @@ fn update_database(organized: &OrganizedPackages<'_>) -> anyhow::Result<()> {
     }
 
     if !organized.to_remove.is_empty() {
-        println_styled!(
-            INFO_STYLE,
+        info!(
             "Marking {} packages as installed as dependencies",
             organized.to_remove.len(),
         );
@@ -181,8 +150,7 @@ fn update_database(organized: &OrganizedPackages<'_>) -> anyhow::Result<()> {
 
 /// Updates installed packages and installs new ones.
 fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Result<()> {
-    println_styled!(
-        INFO_STYLE,
+    info!(
         "{}{}",
         if upgrade {
             "Upgrading installed packages"
@@ -199,10 +167,7 @@ fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Re
     match pacman::sync(upgrade, to_install) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
-            eprintln_styled!(
-                WARNING_STYLE,
-                "pacman did not exit successfully, continuing...",
-            );
+            warn!("pacman did not exit successfully, continuing...");
             Ok(())
         }
         Err(err) => Err(err.into()),
@@ -225,14 +190,11 @@ fn remove_packages(to_remove: &[&str]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println_styled!(INFO_STYLE, "Removing {} packages", to_remove.len(),);
+    info!("Removing {} packages", to_remove.len());
     match pacman::remove(to_remove) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
-            eprintln_styled!(
-                WARNING_STYLE,
-                "pacman did not exit successfully, continuing...",
-            );
+            warn!("pacman did not exit successfully, continuing...");
             Ok(())
         }
         Err(err) => Err(err.into()),

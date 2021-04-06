@@ -5,7 +5,6 @@
 
 use std::{collections::HashSet, ffi::OsStr, io, process::Command};
 
-use ansi_term::Style;
 use thiserror::Error;
 
 /// The return type of all `pacman` calls.
@@ -112,10 +111,9 @@ where
 /// The input and output streams of the command are inherited from the current process. Emits output
 /// to mark the start and end of the command output.
 fn run_for_status(mut cmd: Command) -> Result<()> {
-    let style = Style::new().bold();
-    println_styled!(style, "======== RUNNING PACMAN ========");
+    bold!("======== RUNNING PACMAN ========");
     let status = cmd.status();
-    println_styled!(style, "===== END OF PACMAN OUTPUT =====\n");
+    bold!("===== END OF PACMAN OUTPUT =====\n");
     match status {
         Ok(exit_status) if exit_status.success() => Ok(()),
         Ok(_) => Err(PacmanError::ExitFailure),
