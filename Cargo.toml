@@ -7,6 +7,8 @@ description = "A configuration utility for my specific Arch Linux setup"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+default-run = "archman"
+
 [dependencies]
 ansi_term = "0.12.1"
 anyhow = "1.0.40"
