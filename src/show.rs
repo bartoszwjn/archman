@@ -1,6 +1,6 @@
 //! Displaying information about declared and currently installed packages.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt::Display};
 
 use anyhow::Context;
 
@@ -20,6 +20,21 @@ pub fn show_packages(cfg: Show) -> anyhow::Result<()> {
         packages::get_unneeded_packages().context("Failed to query for unneeded packages")?;
 
     print_summary(&declared, &installed, &organized, &unneeded);
+    if cfg.to_install {
+        print_packages("Packages to install", &organized.to_install);
+    }
+    if cfg.to_explicit {
+        print_packages(
+            "Packages to mark as explicitly installed",
+            &organized.to_mark_as_explicit,
+        );
+    }
+    if cfg.to_remove {
+        print_packages("Packages to remove", &organized.to_remove);
+    }
+    if cfg.unneeded {
+        print_packages("Unneeded packages", &unneeded);
+    }
 
     Ok(())
 }
@@ -63,5 +78,22 @@ fn print_summary(
             n = n,
             n_width = n_width
         );
+    }
+}
+
+fn print_packages<I, P>(what: &str, packages: I)
+where
+    I: IntoIterator<Item = P>,
+    P: Display,
+{
+    let mut packages = packages.into_iter().peekable();
+    println!();
+    if packages.peek().is_none() {
+        info!("No {}", what.to_lowercase())
+    } else {
+        info!("{}:", what);
+        for package in packages {
+            println!("  {}", package);
+        }
     }
 }

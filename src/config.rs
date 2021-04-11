@@ -53,7 +53,23 @@ pub enum Subcommand {
 
 /// Display information about declared and currently installed packages.
 #[derive(Clone, Debug, StructOpt)]
-pub struct ShowArgs {}
+pub struct ShowArgs {
+    /// Equivalent to specifying '-e', '-i', '-r' and '-u'.
+    #[structopt(short = "a", long)]
+    pub all: bool,
+    /// Display all packages that are declared and installed as dependencies.
+    #[structopt(short = "e", long)]
+    pub to_explicit: bool,
+    /// Display all packages that are declared and not installed.
+    #[structopt(short = "i", long)]
+    pub to_install: bool,
+    /// Display all explicitly installed packages that are not declared.
+    #[structopt(short = "r", long)]
+    pub to_remove: bool,
+    /// Display all packages installed as dependencies that are not declared.
+    #[structopt(short = "u", long)]
+    pub unneeded: bool,
+}
 
 /// Synchronize installed packages with the package list.
 #[derive(Clone, Debug, StructOpt)]
@@ -111,6 +127,14 @@ pub struct Show {
     pub package_groups: Vec<String>,
     /// The declared packages.
     pub packages: Packages,
+    /// Whether to display all packages that are declared and installed as dependencies.
+    pub to_explicit: bool,
+    /// Whether to display all packages that are declared and not installed.
+    pub to_install: bool,
+    /// Whether to display all explicitly installed packages that are not declared.
+    pub to_remove: bool,
+    /// Whether to display all packages installed as dependencies that are not declared.
+    pub unneeded: bool,
 }
 
 /// Configuration of the `sync` subcommand assembled from command line and configuration file.
@@ -170,10 +194,13 @@ fn default_config_path() -> Option<PathBuf> {
 /// Merges the command line arguments and configuration file into configuration of `show`
 /// subcommand.
 pub fn merge_show_config(args: ShowArgs, config: Config) -> Show {
-    let ShowArgs {} = args;
     Show {
         package_groups: config.package_groups,
         packages: config.packages,
+        to_explicit: args.to_explicit || args.all,
+        to_install: args.to_install || args.all,
+        to_remove: args.to_remove || args.all,
+        unneeded: args.unneeded || args.all,
     }
 }
 
