@@ -20,7 +20,7 @@
 //! documentation of [`Config`] for all values that can be configured with the configuration file.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     env,
     ffi::OsString,
     fs::File,
@@ -47,8 +47,13 @@ pub struct Args {
 #[derive(Clone, Debug, StructOpt)]
 #[structopt(about = "A configuration utility for my specific Arch Linux setup")]
 pub enum Subcommand {
+    Show(ShowArgs),
     Sync(SyncArgs),
 }
+
+/// Display information about declared and currently installed packages.
+#[derive(Clone, Debug, StructOpt)]
+pub struct ShowArgs {}
 
 /// Synchronize installed packages with the package list.
 #[derive(Clone, Debug, StructOpt)]
@@ -72,36 +77,53 @@ pub struct Config {
     #[serde(default)]
     pub package_groups: Vec<String>,
     /// The packages that should be installed on our system.
-    pub packages: Option<Packages>,
+    #[serde(default)]
+    pub packages: Packages,
     /// Path to the xkb types file.
     pub xkb_types: Option<String>,
 }
 
-/// The list of packages that should be installed.
+/// The set of packages that should be installed.
 ///
-/// The package list can be grouped into named or unnamed groups, with arbitrary nesting.
+/// The package set can be grouped into named or unnamed groups, with arbitrary nesting.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Packages {
     /// A name of a single package that should be installed.
     Package(String),
-    /// A group of package lists, where each list has a name.
+    /// A group of package sets, where each set has a name.
     Map(HashMap<String, Packages>),
-    /// A group of package lists, where lists don't have names.
+    /// A group of package sets, where sets don't have names.
     Array(Vec<Packages>),
+}
+
+impl Default for Packages {
+    /// Returns an empty `Array` of packages.
+    fn default() -> Self {
+        Self::Array(vec![])
+    }
+}
+
+/// Configuration of the `show` subcommand assembled from command line and configuration file.
+#[derive(Clone, Debug)]
+pub struct Show {
+    /// The declared package groups.
+    pub package_groups: Vec<String>,
+    /// The declared packages.
+    pub packages: Packages,
 }
 
 /// Configuration of the `sync` subcommand assembled from command line and configuration file.
 #[derive(Clone, Debug)]
-pub(crate) struct Sync {
+pub struct Sync {
     /// Whether to remove all unneeded packages.
     pub cleanup: bool,
     /// Whether to skip upgrading already installed packages.
     pub no_upgrade: bool,
-    /// The list of declared package groups.
+    /// The declared package groups.
     pub package_groups: Vec<String>,
-    /// The list of declared packages.
-    pub packages: HashSet<String>,
+    /// The declared packages.
+    pub packages: Packages,
     /// Path to the xkb types file.
     pub xkb_types: PathBuf,
 }
@@ -109,7 +131,7 @@ pub(crate) struct Sync {
 /// Reads the configuration file from the given path or the default path.
 ///
 /// If no path is given and the default path does not point to a file, an empty config is returned.
-pub(crate) fn read_config_file(path: Option<PathBuf>) -> anyhow::Result<Config> {
+pub fn read_config_file(path: Option<PathBuf>) -> anyhow::Result<Config> {
     let path_supplied = path.is_some();
     let effective_path = match path {
         Some(path) => path,
@@ -145,13 +167,19 @@ fn default_config_path() -> Option<PathBuf> {
     Some(path)
 }
 
+/// Merges the command line arguments and configuration file into configuration of `show`
+/// subcommand.
+pub fn merge_show_config(args: ShowArgs, config: Config) -> Show {
+    let ShowArgs {} = args;
+    Show {
+        package_groups: config.package_groups,
+        packages: config.packages,
+    }
+}
+
 /// Merges the command line arguments and configuration file into configuration of `sync`
 /// subcommand.
-pub(crate) fn merge_sync_config(args: SyncArgs, config: Config) -> anyhow::Result<Sync> {
-    let packages = config
-        .packages
-        .ok_or_else(|| anyhow!("Package list file was not specified"))?
-        .into_set();
+pub fn merge_sync_config(args: SyncArgs, config: Config) -> anyhow::Result<Sync> {
     let xkb_types = Option::or(args.xkb_types, config.xkb_types)
         .ok_or_else(|| anyhow!("xkb types file was not specified"))?;
 
@@ -159,7 +187,7 @@ pub(crate) fn merge_sync_config(args: SyncArgs, config: Config) -> anyhow::Resul
         cleanup: args.cleanup,
         no_upgrade: args.no_upgrade,
         package_groups: config.package_groups,
-        packages,
+        packages: config.packages,
         xkb_types: substitute_tilde(xkb_types).into(),
     })
 }
@@ -187,35 +215,5 @@ fn substitute_tilde(path: String) -> OsString {
                 result
             }
         },
-    }
-}
-
-impl Packages {
-    /// Flattens the nested list of packages into a `HashSet`.
-    fn into_set(self) -> HashSet<String> {
-        let mut set = HashSet::new();
-        self.add_to_set(&mut set);
-        set
-    }
-
-    /// Adds all packages from `self` to the given `HashSet`.
-    fn add_to_set(self, set: &mut HashSet<String>) {
-        match self {
-            Packages::Package(package) => {
-                if let Some(duplicate) = set.replace(package) {
-                    warn!("Package {:?} is declared multiple times", duplicate);
-                }
-            }
-            Packages::Map(map) => {
-                for (_, packages) in map {
-                    packages.add_to_set(set);
-                }
-            }
-            Packages::Array(array) => {
-                for packages in array {
-                    packages.add_to_set(set);
-                }
-            }
-        }
     }
 }

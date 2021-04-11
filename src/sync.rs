@@ -9,25 +9,22 @@
 //! Right now we do not concern ourselves with AUR packages.
 //!
 //! For now this is what we do:
-//! - get the list of explicitly installed packages
-//! - get the list of packages installed as dependencies
 //! - mark declared packages that are installed as dependencies as explicitly installed
 //! - mark explicitly installed packages that are not declared as installed as dependencies
 //! - update packages and install declared packages that are not installed
-//! - if doing a cleanup, get the list of packages installed as dependencies that are not needed and
-//!   remove them recursively
+//! - if doing a cleanup, recursively remove unneeded packages installed as dependencies
 //! - if not doing a cleanup, recursively remove the packages that were explicitly installed before,
 //!   are no longer in the list of packages and are not dependencies of other installed packages
+//!
+//! Bonus step:
 //! - check if the xkb_types file needs to be patched (TODO: run arbitrary scripts at this point?)
 
 use std::{
-    collections::{HashMap, HashSet},
     env,
     fs::{self, OpenOptions},
     io::Write,
     path::Path,
     process::Command,
-    rc::Rc,
 };
 
 use anyhow::{anyhow, ensure, Context};
@@ -35,33 +32,19 @@ use regex::Regex;
 
 use crate::{
     config::Sync,
-    pacman::{self, InstallReason, PacmanError, QueryFilter},
+    packages::{self, OrganizedPackages},
+    pacman::{self, InstallReason, PacmanError},
 };
-
-/// Packages organized by what we should do with them.
-#[derive(Clone, Debug)]
-struct OrganizedPackages<'a> {
-    to_install: Vec<&'a str>,
-    to_mark_as_explicit: Vec<&'a str>,
-    to_remove: Vec<&'a str>,
-}
 
 /// Synchronizes installed packages with the package list.
 ///
 /// See module documentation for the details.
-pub(crate) fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
-    let group_packages = pacman::groups(cfg.package_groups)
-        .context("Failed to query for packages that belong to the declared package groups")?;
-    let declared = merge_declared_groups(cfg.packages, group_packages);
-    let (installed_explicitly, installed_as_deps) =
-        query_installed_packages().context("Failed to query for installed packages")?;
-    println!(
-        "Packages: {} declared, {} explicitly installed, {} installed as dependencies\n",
-        declared.len(),
-        installed_explicitly.len(),
-        installed_as_deps.len(),
-    );
-    let organized = organize_packages(&declared, &installed_explicitly, &installed_as_deps);
+pub fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
+    let declared = packages::get_declared_packages(cfg.packages, cfg.package_groups)
+        .context("Failed to determine the set of declared packages")?;
+    let installed =
+        packages::get_installed_packages().context("Failed to query for installed packages")?;
+    let organized = packages::organize_packages(&declared, &installed);
 
     update_database(&organized).context("Failed to update package database")?;
     update_and_install_packages(!cfg.no_upgrade, &organized.to_install)
@@ -69,7 +52,7 @@ pub(crate) fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
 
     if cfg.cleanup {
         let unneeded =
-            query_unneeded_packages().context("Failed to query for unneeded packages")?;
+            packages::get_unneeded_packages().context("Failed to query for unneeded packages")?;
         let mut unneeded = unneeded.iter().map(String::as_str).collect::<Vec<_>>();
         unneeded.sort_unstable();
         remove_packages(&unneeded).context("Failed to remove unneeded packages")?;
@@ -80,71 +63,6 @@ pub(crate) fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
     patch_xkb_types(&cfg.xkb_types).context("Failed to patch the xkb types file")?;
 
     Ok(())
-}
-
-/// Adds packages that are members of declared groups to the list of declared packages.
-fn merge_declared_groups(
-    mut declared_packages: HashSet<String>,
-    group_packages: HashMap<String, Rc<str>>,
-) -> HashSet<String> {
-    for (package, group) in group_packages {
-        if let Some(duplicate) = declared_packages.replace(package) {
-            warn!(
-                "Declared package {:?} is also a member of the declared group {:?}",
-                duplicate, group,
-            );
-        }
-    }
-    declared_packages
-}
-
-/// Queries for packages currently installed explicitly or as dependencies.
-fn query_installed_packages() -> anyhow::Result<(HashSet<String>, HashSet<String>)> {
-    let installed_explicitly = pacman::query(QueryFilter {
-        install_reason: Some(InstallReason::Explicit),
-        ..QueryFilter::default()
-    })?;
-    let installed_as_dependencies = pacman::query(QueryFilter {
-        install_reason: Some(InstallReason::Dependency),
-        ..QueryFilter::default()
-    })?;
-
-    Ok((installed_explicitly, installed_as_dependencies))
-}
-
-/// Organizes packages based on what we should do with them.
-fn organize_packages<'a>(
-    declared: &'a HashSet<String>,
-    installed_explicitly: &'a HashSet<String>,
-    installed_as_dependencies: &'a HashSet<String>,
-) -> OrganizedPackages<'a> {
-    let mut to_remove = installed_explicitly
-        .difference(declared)
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-
-    let mut to_install = vec![];
-    let mut to_mark_as_explicit = vec![];
-    for package in declared {
-        if !installed_explicitly.contains(package) {
-            if installed_as_dependencies.contains(package) {
-                to_mark_as_explicit.push(package.as_str());
-            } else {
-                to_install.push(package.as_str());
-            }
-        }
-    }
-
-    // sort them so that they look nicer if we print them
-    to_remove.sort_unstable();
-    to_install.sort_unstable();
-    to_mark_as_explicit.sort_unstable();
-
-    OrganizedPackages {
-        to_install,
-        to_mark_as_explicit,
-        to_remove,
-    }
 }
 
 /// Updates the install reason of already installed packages.
@@ -192,16 +110,6 @@ fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Re
         }
         Err(err) => Err(err.into()),
     }
-}
-
-/// Queries for packages installed as dependencies that are not required by other packages.
-fn query_unneeded_packages() -> anyhow::Result<HashSet<String>> {
-    pacman::query(QueryFilter {
-        install_reason: Some(InstallReason::Dependency),
-        unrequired: true,
-        ..QueryFilter::default()
-    })
-    .map_err(Into::into)
 }
 
 /// Recursively removes given packages, if they are not needed by other packages.

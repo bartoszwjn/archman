@@ -119,7 +119,7 @@ where
 fn run_for_status(mut cmd: Command) -> Result<()> {
     bold!("======== RUNNING PACMAN ========");
     let status = cmd.status();
-    bold!("===== END OF PACMAN OUTPUT =====\n");
+    bold!("===== END OF PACMAN OUTPUT =====");
     match status {
         Ok(exit_status) if exit_status.success() => Ok(()),
         Ok(_) => Err(PacmanError::ExitFailure),
