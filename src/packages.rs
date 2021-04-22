@@ -4,10 +4,7 @@ use std::collections::HashSet;
 
 use anyhow::Context;
 
-use crate::{
-    config::Packages,
-    pacman::{self, InstallReason, QueryFilter},
-};
+use crate::pacman::{self, InstallReason, QueryFilter};
 
 /// Packages currently installed on our system.
 #[derive(Clone, Debug)]
@@ -26,13 +23,9 @@ pub struct OrganizedPackages<'a> {
 
 /// Merges declared packages and package groups into a single set of packages.
 pub fn get_declared_packages(
-    packages: Packages,
+    mut declared: HashSet<String>,
     groups: Vec<String>,
 ) -> anyhow::Result<HashSet<String>> {
-    let mut declared = HashSet::new();
-
-    add_packages(&mut declared, packages);
-
     let group_packages = pacman::groups(groups)
         .context("Failed to query for packages that belong to the declared package groups")?;
     for (package, group) in group_packages {
@@ -45,27 +38,6 @@ pub fn get_declared_packages(
     }
 
     Ok(declared)
-}
-
-/// Adds all packages from `packages` to `set`.
-fn add_packages(set: &mut HashSet<String>, packages: Packages) {
-    match packages {
-        Packages::Package(package) => {
-            if let Some(duplicate) = set.replace(package) {
-                warn!("Package {:?} is declared multiple times", duplicate);
-            }
-        }
-        Packages::Map(map) => {
-            for (_, packages) in map {
-                add_packages(set, packages);
-            }
-        }
-        Packages::Array(array) => {
-            for packages in array {
-                add_packages(set, packages);
-            }
-        }
-    }
 }
 
 /// Queries for packages currently installed explicitly or as dependencies.

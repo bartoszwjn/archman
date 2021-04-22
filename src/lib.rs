@@ -13,19 +13,23 @@ mod pacman;
 mod show;
 mod sync;
 
-use config::{Args, Subcommand};
+use config::{Args, Config, Link, Show, Subcommand, Sync};
 
 /// Runs the program, given the parsed command line arguments.
 pub fn run(args: Args) -> anyhow::Result<()> {
-    let config = config::read_config_file(args.config)?;
+    let config = Config::read_from_file(args.config)?;
 
     match args.subcommand {
+        Subcommand::Link(link_args) => {
+            let _link_config = Link::new(link_args, config)?;
+            todo!()
+        }
         Subcommand::Show(show_args) => {
-            let show_config = config::merge_show_config(show_args, config);
+            let show_config = Show::new(show_args, config);
             show::show_packages(show_config)
         }
         Subcommand::Sync(sync_args) => {
-            let sync_config = config::merge_sync_config(sync_args, config)?;
+            let sync_config = Sync::new(sync_args, config)?;
             sync::synchronize_packages(sync_config)
         }
     }
