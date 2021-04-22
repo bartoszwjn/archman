@@ -8,6 +8,7 @@
 mod util;
 
 pub mod config;
+mod link;
 mod packages;
 mod pacman;
 mod show;
@@ -21,8 +22,8 @@ pub fn run(args: Args) -> anyhow::Result<()> {
 
     match args.subcommand {
         Subcommand::Link(link_args) => {
-            let _link_config = Link::new(link_args, config);
-            todo!()
+            let link_config = Link::new(link_args, config);
+            link::create_links(link_config)
         }
         Subcommand::Show(show_args) => {
             let show_config = Show::new(show_args, config);
