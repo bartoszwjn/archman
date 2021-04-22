@@ -60,7 +60,9 @@ pub fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
         remove_packages(&organized.to_remove).context("Failed to remove unneeded packages")?;
     }
 
-    patch_xkb_types(&cfg.xkb_types).context("Failed to patch the xkb types file")?;
+    if let Some(ref xkb_types) = cfg.xkb_types {
+        patch_xkb_types(xkb_types).context("Failed to patch the xkb types file")?;
+    }
 
     Ok(())
 }

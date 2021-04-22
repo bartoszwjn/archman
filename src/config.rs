@@ -90,7 +90,7 @@ pub struct SyncArgs {
     #[structopt(long)]
     pub no_upgrade: bool,
     /// Path to the xkb types file.
-    #[structopt(long)]
+    #[structopt(long, validator = validate_absolute_path)]
     pub xkb_types: Option<String>,
 }
 
@@ -195,7 +195,7 @@ pub struct Sync {
     /// The declared packages.
     pub packages: HashSet<String>,
     /// Path to the xkb types file.
-    pub xkb_types: PathBuf,
+    pub xkb_types: Option<PathBuf>,
 }
 
 /// Reading the configuration file.
@@ -252,6 +252,12 @@ impl Config {
     }
 
     fn validate(&self) -> anyhow::Result<()> {
+        if let Some(ref xkb_types) = self.xkb_types {
+            validate_absolute_path(xkb_types)
+                .map_err(|s| anyhow!(s))
+                .context("Invalid value for the 'xkb_types' field")?;
+        }
+
         if let Some(ref link_root) = self.link_root {
             validate_absolute_path(link_root)
                 .map_err(|s| anyhow!(s))
@@ -332,14 +338,14 @@ impl Sync {
     /// Builds configuration of the `sync` subcommand from command line arguments and config file.
     pub fn new(args: SyncArgs, config: Config) -> anyhow::Result<Self> {
         let xkb_types = Option::or(args.xkb_types, config.xkb_types)
-            .ok_or_else(|| anyhow!("xkb types file was not specified"))?;
+            .map(|xkb_types| substitute_tilde(xkb_types).into());
 
         Ok(Self {
             cleanup: args.cleanup,
             no_upgrade: args.no_upgrade,
             package_groups: config.package_groups,
             packages: config.packages.flatten_packages(),
-            xkb_types: substitute_tilde(xkb_types).into(),
+            xkb_types,
         })
     }
 }
