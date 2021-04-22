@@ -25,10 +25,10 @@ use std::{
     ffi::OsString,
     fs::File,
     io::{self, Read},
-    path::{self, Path, PathBuf},
+    path::{Component, PathBuf},
 };
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::Context;
 use serde::Deserialize;
 use structopt::StructOpt;
 
@@ -56,8 +56,8 @@ pub enum Subcommand {
 #[derive(Clone, Debug, StructOpt)]
 pub struct LinkArgs {
     /// The absolute path from which all relative paths to link targets are resolved.
-    #[structopt(short = "r", long, validator = validate_absolute_path)]
-    pub link_root: Option<String>,
+    #[structopt(short = "r", long, parse(from_os_str))]
+    pub link_root: Option<OsString>,
 }
 
 /// Display information about declared and currently installed packages.
@@ -90,19 +90,22 @@ pub struct SyncArgs {
     #[structopt(long)]
     pub no_upgrade: bool,
     /// Path to the xkb types file.
-    #[structopt(long, validator = validate_absolute_path)]
-    pub xkb_types: Option<String>,
+    #[structopt(long, parse(from_os_str))]
+    pub xkb_types: Option<OsString>,
 }
 
 /// All values that can be specified in the configuration file.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// The files that should be copied to somewhere on the filesystem.
+    #[serde(default)]
+    copies: HashMap<String, String>,
     /// The absolute path from which all relative paths to link targets are resolved.
     link_root: Option<String>,
     /// The files that should be linked from somewhere on the filesystem.
     #[serde(default)]
-    links: NestedSet<LinkEntry>,
+    links: HashMap<String, String>,
     /// The groups of packages that should be installed on our system.
     #[serde(default)]
     package_groups: Vec<String>,
@@ -134,36 +137,13 @@ impl<T> Default for NestedSet<T> {
     }
 }
 
-/// Description of a file that should be linked or copied.
-#[derive(Clone, Debug, Deserialize)]
-struct LinkEntry {
-    /// Should the file be copied instead of linking.
-    #[serde(default)]
-    copy: bool,
-    /// Absolute path to where the link or copy should be located.
-    location: String,
-    /// What file should be pointed to by the link or copied.
-    ///
-    /// Relative paths are resolved relative to `link_root`.
-    target: String,
-}
-
 /// Configuration of the `link` subcommand assembled from command line and configuration file.
 #[derive(Clone, Debug)]
 pub struct Link {
-    /// Files that should be linked or copied.
-    ///
-    /// Keys must be absolute paths.
-    pub links: HashMap<PathBuf, LinkTarget>,
-}
-
-/// Description of a target file of a link or copy.
-#[derive(Clone, Debug)]
-pub struct LinkTarget {
-    /// Should the file be copied instead of linking.
-    pub copy: bool,
-    /// Absolute path to the link target.
-    pub path: PathBuf,
+    /// Files that should be copied.
+    pub copies: HashMap<PathBuf, PathBuf>,
+    /// Files that should be linked.
+    pub links: HashMap<PathBuf, PathBuf>,
 }
 
 /// Configuration of the `show` subcommand assembled from command line and configuration file.
@@ -237,9 +217,6 @@ impl Config {
         let this: Self =
             toml::from_str(&contents).context("Failed to parse the configuration file")?;
 
-        this.validate()
-            .context("Contents of the configuration file are invalid")?;
-
         Ok(this)
     }
 
@@ -250,45 +227,20 @@ impl Config {
         path.push(".config/archman/archman.toml");
         Some(path)
     }
-
-    fn validate(&self) -> anyhow::Result<()> {
-        if let Some(ref xkb_types) = self.xkb_types {
-            validate_absolute_path(xkb_types)
-                .map_err(|s| anyhow!(s))
-                .context("Invalid value for the 'xkb_types' field")?;
-        }
-
-        if let Some(ref link_root) = self.link_root {
-            validate_absolute_path(link_root)
-                .map_err(|s| anyhow!(s))
-                .context("Invalid value for the 'link_root' field")?;
-        }
-
-        let mut locations = HashSet::new();
-        self.links
-            .try_for_each_ref(|link_entry| {
-                validate_absolute_path(&link_entry.location).map_err(|s| anyhow!(s))?;
-                if let Some(duplicate) = locations.replace(&link_entry.location) {
-                    bail!("Multiple links with location {:?}", duplicate);
-                }
-                Ok(())
-            })
-            .context("Invalid value of a link location")?;
-
-        Ok(())
-    }
 }
 
 impl Link {
     /// Builds configuration of the `link` subcommand from command line arguments and config file.
-    pub fn new(args: LinkArgs, config: Config) -> anyhow::Result<Link> {
-        // We already ensured that this is an absolute path.
-        let link_root = Option::or(args.link_root, config.link_root).map(PathBuf::from);
+    pub fn new(args: LinkArgs, config: Config) -> Self {
+        let config_link_root = config.link_root;
+        let link_root = args
+            .link_root
+            .or_else(|| config_link_root.map(substitute_tilde))
+            .map(PathBuf::from);
 
-        let mut links = HashMap::new();
-        config.links.try_for_each(|link_entry| {
-            let location = PathBuf::from(link_entry.location);
-            let target = PathBuf::from(link_entry.target);
+        let mk_link = |(location, target)| {
+            let location = PathBuf::from(substitute_tilde(location));
+            let target = PathBuf::from(substitute_tilde(target));
             let resolved_target = if target.is_absolute() {
                 target
             } else {
@@ -298,25 +250,17 @@ impl Link {
                         resolved_target.push(&target);
                         resolved_target
                     }
-                    None => bail!(
-                        "Found a relative link target {:?} and 'link_root' was not specified",
-                        target
-                    ),
+                    None => target,
                 }
             };
 
-            links.insert(
-                location,
-                LinkTarget {
-                    copy: link_entry.copy,
-                    path: resolved_target,
-                },
-            );
+            (location, resolved_target)
+        };
 
-            Ok(())
-        })?;
+        let links = config.links.into_iter().map(mk_link).collect();
+        let copies = config.copies.into_iter().map(mk_link).collect();
 
-        Ok(Self { links })
+        Self { links, copies }
     }
 }
 
@@ -337,8 +281,11 @@ impl Show {
 impl Sync {
     /// Builds configuration of the `sync` subcommand from command line arguments and config file.
     pub fn new(args: SyncArgs, config: Config) -> anyhow::Result<Self> {
-        let xkb_types = Option::or(args.xkb_types, config.xkb_types)
-            .map(|xkb_types| substitute_tilde(xkb_types).into());
+        let config_xkb_types = config.xkb_types;
+        let xkb_types = args
+            .xkb_types
+            .or_else(|| config_xkb_types.map(substitute_tilde))
+            .map(PathBuf::from);
 
         Ok(Self {
             cleanup: args.cleanup,
@@ -371,63 +318,6 @@ impl<T> NestedSet<T> {
 
         inner(self, &mut f)
     }
-
-    /// Applies a function to each element in the set, passing each element by value and returning
-    /// early in case of an error.
-    fn try_for_each<E>(self, mut f: impl FnMut(T) -> Result<(), E>) -> Result<(), E> {
-        fn inner<T, E>(
-            this: NestedSet<T>,
-            f: &mut impl FnMut(T) -> Result<(), E>,
-        ) -> Result<(), E> {
-            match this {
-                NestedSet::Singleton(x) => f(x),
-                NestedSet::Map(map) => {
-                    for (_, subset) in map {
-                        inner(subset, f)?;
-                    }
-                    Ok(())
-                }
-                NestedSet::Array(array) => {
-                    for subset in array {
-                        inner(subset, f)?;
-                    }
-                    Ok(())
-                }
-            }
-        }
-
-        inner(self, &mut f)
-    }
-
-    /// Applies a function to each element in the set, passing each element by reference and
-    /// returning early in case of an error.
-    fn try_for_each_ref<'a, E>(
-        &'a self,
-        mut f: impl FnMut(&'a T) -> Result<(), E>,
-    ) -> Result<(), E> {
-        fn inner<'a, T, E>(
-            this: &'a NestedSet<T>,
-            f: &mut impl FnMut(&'a T) -> Result<(), E>,
-        ) -> Result<(), E> {
-            match *this {
-                NestedSet::Singleton(ref x) => f(x),
-                NestedSet::Map(ref map) => {
-                    for subset in map.values() {
-                        inner(subset, f)?;
-                    }
-                    Ok(())
-                }
-                NestedSet::Array(ref array) => {
-                    for subset in array {
-                        inner(subset, f)?;
-                    }
-                    Ok(())
-                }
-            }
-        }
-
-        inner(self, &mut f)
-    }
 }
 
 impl NestedSet<String> {
@@ -451,29 +341,17 @@ impl NestedSet<String> {
 /// - the string starts with a tilde followed by a character that is not a path separator
 /// - the environment variable `HOME` is not set
 fn substitute_tilde(path: String) -> OsString {
-    if !path.starts_with('~') {
-        return path.into();
-    }
-
-    let rest = &path['~'.len_utf8()..];
-    let next_char = rest.chars().next();
-    match next_char {
-        Some(next_char) if !path::is_separator(next_char) => path.into(),
-        _ => match env::var_os("HOME") {
+    let path = PathBuf::from(path);
+    let mut components = path.components();
+    match components.next() {
+        Some(Component::Normal(first_part)) if first_part == "~" => match env::var_os("HOME") {
             None => path.into(),
             Some(home) => {
-                let mut result = home;
-                result.push(rest);
-                result
+                let mut result = PathBuf::from(home);
+                result.push(components.as_path());
+                result.into()
             }
         },
-    }
-}
-
-fn validate_absolute_path<P: AsRef<Path>>(path: P) -> Result<(), String> {
-    if path.as_ref().is_absolute() {
-        Ok(())
-    } else {
-        Err("Expected an absolute path".to_owned())
+        _ => path.into(),
     }
 }

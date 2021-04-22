@@ -21,7 +21,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
 
     match args.subcommand {
         Subcommand::Link(link_args) => {
-            let _link_config = Link::new(link_args, config)?;
+            let _link_config = Link::new(link_args, config);
             todo!()
         }
         Subcommand::Show(show_args) => {
