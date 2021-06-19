@@ -5,45 +5,49 @@ use std::{collections::HashSet, fmt::Display};
 use anyhow::Context;
 
 use crate::{
-    config::Show,
+    args::ShowArgs,
+    config::Config,
     packages::{self, InstalledPackages, OrganizedPackages},
 };
 
 /// Prints out information about declared and installed packages.
-pub fn show_packages(cfg: Show) -> anyhow::Result<()> {
-    let declared = packages::get_declared_packages(cfg.packages, cfg.package_groups)
-        .context("Failed to determine the set of declared packages")?;
-    let installed =
-        packages::get_installed_packages().context("Failed to query for installed packages")?;
-    let organized = packages::organize_packages(&declared, &installed);
-    let unneeded =
-        packages::get_unneeded_packages().context("Failed to query for unneeded packages")?;
+pub(crate) fn show_packages(args: ShowArgs, cfg: Config) -> anyhow::Result<()> {
+    let declared_packages = cfg.packages();
+    let declared_groups = cfg.package_groups();
 
-    print_summary(&declared, &installed, &organized, &unneeded);
-    if cfg.to_install {
+    let installed = packages::query_packages().context("Failed to query for installed packages")?;
+    let group_packages = packages::query_groups(&declared_groups.elements)
+        .context("Failed to query for packages that belong to the declared package groups")?;
+
+    let declared = packages::merge_declared_packages(&declared_packages.elements, &group_packages);
+    let organized = packages::organize_packages(&declared.packages, &installed);
+
+    // TODO print warnings
+
+    print_summary(&declared.packages, &installed, &organized);
+    if args.all || args.to_install {
         print_packages("Packages to install", &organized.to_install);
     }
-    if cfg.to_explicit {
+    if args.all || args.to_explicit {
         print_packages(
             "Packages to mark as explicitly installed",
             &organized.to_mark_as_explicit,
         );
     }
-    if cfg.to_remove {
+    if args.all || args.to_remove {
         print_packages("Packages to remove", &organized.to_remove);
     }
-    if cfg.unneeded {
-        print_packages("Unneeded packages", &unneeded);
+    if args.all || args.unneeded {
+        print_packages("Unneeded packages", &organized.unneeded);
     }
 
     Ok(())
 }
 
 fn print_summary(
-    declared: &HashSet<String>,
+    declared: &HashSet<&str>,
     installed: &InstalledPackages,
     organized: &OrganizedPackages<'_>,
-    unneeded: &HashSet<String>,
 ) {
     let summary = [
         ("declared", declared.len()),
@@ -59,7 +63,7 @@ fn print_summary(
             organized.to_mark_as_explicit.len(),
         ),
         ("to remove", organized.to_remove.len()),
-        ("unneeded", unneeded.len()),
+        ("unneeded", organized.unneeded.len()),
     ];
 
     let what_width = summary.iter().map(|&(what, _)| what.len()).max().unwrap();

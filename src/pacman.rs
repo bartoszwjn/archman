@@ -1,14 +1,13 @@
 //! Running `pacman` --- the Arch Linux package manager.
 //!
 //! The functions in this module run the respective `pacman` subcommands. Additional flags are given
-//! based on the function arguments. Subcommands that require root privileges are run with `sudo`.
+//! based on the function arguments.
 
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsStr,
     io,
     process::Command,
-    rc::Rc,
 };
 
 use thiserror::Error;
@@ -18,7 +17,7 @@ type Result<T, E = PacmanError> = std::result::Result<T, E>;
 
 /// Errors that can occur when trying to run `pacman`.
 #[derive(Debug, Error)]
-pub enum PacmanError {
+pub(crate) enum PacmanError {
     /// `pacman` did not exit successfully.
     #[error("pacman did not exit successfully")]
     ExitFailure,
@@ -32,19 +31,19 @@ pub enum PacmanError {
 
 /// Filter for packages returned from a query.
 #[derive(Clone, Debug, Default)]
-pub struct QueryFilter {
+pub(crate) struct QueryFilter {
     /// Constrain the install reason.
-    pub install_reason: Option<InstallReason>,
+    pub(crate) install_reason: Option<InstallReason>,
     /// Only packages not (optionally) required by any other package.
     // TODO: ignore optional dependencies?
-    pub unrequired: bool,
+    pub(crate) unrequired: bool,
     /// Only outdated packages.
-    pub outdated: bool,
+    pub(crate) outdated: bool,
 }
 
 /// Install reason of a package.
 #[derive(Clone, Copy, Debug)]
-pub enum InstallReason {
+pub(crate) enum InstallReason {
     /// Explicitly installed.
     Explicit,
     /// Installed as a dependency of another package.
@@ -56,13 +55,13 @@ pub enum InstallReason {
 /// # Arguments
 /// - `install_reason`: the install reason to be set for the specified `packages`.
 /// - `packages`: packages that should have their database entries modified.
-pub fn database<P, S>(install_reason: InstallReason, packages: P) -> Result<()>
+pub(crate) fn database<P, S>(install_reason: InstallReason, packages: P) -> Result<()>
 where
     P: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let mut cmd = Command::new("sudo");
-    cmd.args(&["pacman", "--color=auto", "-D"]);
+    let mut cmd = Command::new("pacman");
+    cmd.args(&["--color=auto", "-D"]);
     match install_reason {
         InstallReason::Explicit => cmd.arg("--asexplicit"),
         InstallReason::Dependency => cmd.arg("--asdeps"),
@@ -79,13 +78,13 @@ where
 /// # Arguments
 /// - `system_upgrade`: update outdated packages (`-u` flag).
 /// - `packages`: additional packages to be installed.
-pub fn sync<P, S>(system_upgrade: bool, packages: P) -> Result<()>
+pub(crate) fn sync<P, S>(system_upgrade: bool, packages: P) -> Result<()>
 where
     P: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let mut cmd = Command::new("sudo");
-    cmd.args(&["pacman", "--color=auto", "-S", "-y"]);
+    let mut cmd = Command::new("pacman");
+    cmd.args(&["--color=auto", "-S", "-y"]);
     if system_upgrade {
         cmd.arg("-u");
     }
@@ -100,13 +99,13 @@ where
 ///
 /// # Arguments
 /// - `packages`: packages that should be removed.
-pub fn remove<P, S>(packages: P) -> Result<()>
+pub(crate) fn remove<P, S>(packages: P) -> Result<()>
 where
     P: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let mut cmd = Command::new("sudo");
-    cmd.args(&["pacman", "--color=auto", "-R", "-s", "-u"]);
+    let mut cmd = Command::new("pacman");
+    cmd.args(&["--color=auto", "-R", "-s", "-u"]);
     cmd.args(packages);
 
     run_for_status(cmd)
@@ -131,7 +130,7 @@ fn run_for_status(mut cmd: Command) -> Result<()> {
 ///
 /// The `--native` (`-n`) flag is always used. `stdout` is captured and parsed, `stderr` is
 /// inherited from the current process.
-pub fn query(filter: QueryFilter) -> Result<HashSet<String>> {
+pub(crate) fn query(filter: QueryFilter) -> Result<HashSet<String>> {
     let mut cmd = Command::new("pacman");
     cmd.args(&["-Q", "-q", "-n"]);
     if let Some(install_reason) = filter.install_reason {
@@ -169,20 +168,18 @@ pub fn query(filter: QueryFilter) -> Result<HashSet<String>> {
 /// `pacman -Sg`
 ///
 /// Retrieves the list of packages that belong to the given `groups`.
-pub fn groups<G, S>(groups: G) -> Result<HashMap<String, Rc<str>>>
+pub(crate) fn groups<'a, G>(groups: G) -> Result<HashMap<String, &'a str>>
 where
-    G: IntoIterator<Item = S>,
-    S: Into<Rc<str>>,
+    G: IntoIterator<Item = &'a str>,
 {
     let mut packages = HashMap::new();
     for group in groups {
-        let group = group.into();
         let mut cmd = Command::new("pacman");
         cmd.args(&["-S", "-g", "-q", &group]);
         let output = cmd.output()?;
         if output.status.success() {
             match std::str::from_utf8(&output.stdout) {
-                Ok(s) => packages.extend(s.lines().map(|s| (s.to_owned(), Rc::clone(&group)))),
+                Ok(s) => packages.extend(s.lines().map(|s| (s.to_owned(), group))),
                 Err(_) => return Err(PacmanError::NonUtf8Output(output.stdout)),
             }
         } else {

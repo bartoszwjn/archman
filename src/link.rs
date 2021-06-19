@@ -1,25 +1,38 @@
 //! Creating links to and copies of configuration files.
 
-use std::{fs, io::ErrorKind, path::Path};
+use std::{fs, io::ErrorKind, os::unix, path::Path};
 
-use anyhow::{bail, Context};
+use anyhow::{anyhow, Context};
 
-use crate::config::Link;
+use crate::{
+    args::{CopyArgs, LinkArgs},
+    config::Config,
+};
 
-/// Creates symbolic links and copies of files specified in `cfg`.
-pub fn create_links(cfg: Link) -> anyhow::Result<()> {
-    for (location, target) in cfg.links {
-        let parent = match location.parent() {
-            Some(parent) => parent,
-            None => bail!("The root directory is not a valid link path"),
-        };
-        create_link(&location, &target, &parent)?;
+// TODO don't stop on error during the loop
+
+/// Creates symbolic links to files specified in `cfg`.
+pub(crate) fn create_links(args: LinkArgs, cfg: Config) -> anyhow::Result<()> {
+    let LinkArgs {} = args;
+    for (location, target) in cfg.links() {
+        let parent = location
+            .parent()
+            // TODO indicate which entry caused the error
+            .ok_or_else(|| anyhow!("The root directory is not a valid link path"))?;
+        create_link(&location, &target, parent)?;
     }
+    Ok(())
+}
 
-    if !cfg.copies.is_empty() {
-        warn!("copying files as root, not yet implemented");
+pub(crate) fn create_copies(args: CopyArgs, cfg: Config) -> anyhow::Result<()> {
+    let CopyArgs {} = args;
+    for (copy, original) in cfg.copies() {
+        let parent = copy
+            .parent()
+            // TODO indicate which entry caused the error
+            .ok_or_else(|| anyhow!("The root directory is not a valid copy path"))?;
+        create_copy(&copy, &original, parent)?;
     }
-
     Ok(())
 }
 
@@ -33,8 +46,8 @@ fn create_link(location: &Path, target: &Path, parent: &Path) -> anyhow::Result<
                 println!("{:?} already exists", location);
             } else {
                 warn!(
-                    "{:?} already exists, but its target is {:?}",
-                    location, old_target
+                    "{:?} already exists, but its target is {:?}, (expected {:?})",
+                    location, old_target, target,
                 );
             }
         }
@@ -43,12 +56,43 @@ fn create_link(location: &Path, target: &Path, parent: &Path) -> anyhow::Result<
             fs::create_dir_all(parent).with_context(|| {
                 format!("Failed to create the parent directory of {:?}", location)
             })?;
-            std::os::unix::fs::symlink(target, location)
+            unix::fs::symlink(target, location)
                 .with_context(|| format!("Failed to create {:?}", location))?;
             println!("Created link {:?} -> {:?}", location, target);
         }
         Err(err) => Err(err)
             .with_context(|| format!("Failed to query for metadata of file {:?}", location))?,
+    }
+    Ok(())
+}
+
+fn create_copy(copy: &Path, original: &Path, parent: &Path) -> anyhow::Result<()> {
+    match copy.symlink_metadata() {
+        Ok(metadata) if metadata.file_type().is_file() => {
+            let original_contents = fs::read(original)
+                .with_context(|| format!("Failed to read the contents of {:?}", original))?;
+            let dest_contents = fs::read(copy)
+                .with_context(|| format!("Failed to read the contents of {:?}", copy))?;
+            if original_contents == dest_contents {
+                println!("{:?} already exists", copy);
+            } else {
+                warn!(
+                    "{:?} already exists, but is different from {:?}",
+                    copy, original,
+                );
+            }
+        }
+        Ok(_) => warn!("{:?} already exists, but isn't a regular file", copy),
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create the parent directory of {:?}", copy))?;
+            fs::copy(original, copy)
+                .with_context(|| format!("Failed to copy {:?} to {:?}", original, copy))?;
+            println!("Copied {:?} -> {:?}", original, copy);
+        }
+        Err(err) => {
+            Err(err).with_context(|| format!("Failed to query for metadata of file {:?}", copy))?
+        }
     }
     Ok(())
 }

@@ -5,14 +5,13 @@ authors = ["Bartosz Wojno <bartoszwjn@gmail.com>"]
 edition = "2018"
 description = "A configuration utility for my specific Arch Linux setup"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 default-run = "archman"
 
 [dependencies]
 ansi_term = "0.12.1"
 anyhow = "1.0.40"
 atty = "0.2.14"
+gethostname = "0.2.1"
 regex = "1.4.5"
 serde = { version = "1.0.125", features = ["derive"] }
 structopt = "0.3.21"

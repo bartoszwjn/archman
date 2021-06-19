@@ -12,26 +12,24 @@
 //! - mark declared packages that are installed as dependencies as explicitly installed
 //! - mark explicitly installed packages that are not declared as installed as dependencies
 //! - update packages and install declared packages that are not installed
-//! - if doing a cleanup, recursively remove unneeded packages installed as dependencies
-//! - if not doing a cleanup, recursively remove the packages that were explicitly installed before,
-//!   are no longer in the list of packages and are not dependencies of other installed packages
+//! - remove explicitly installed packages that are not declared
+//! - if doing cleanup, also remove packages installed as dependencies that are not declared and
+//!   not required by other packages
 //!
 //! Bonus step:
 //! - check if the xkb_types file needs to be patched (TODO: run arbitrary scripts at this point?)
 
 use std::{
-    env,
-    fs::{self, OpenOptions},
-    io::Write,
-    path::Path,
-    process::Command,
+    fs,
+    path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, ensure, Context};
+use anyhow::{ensure, Context};
 use regex::Regex;
 
 use crate::{
-    config::Sync,
+    args::SyncArgs,
+    config::Config,
     packages::{self, OrganizedPackages},
     pacman::{self, InstallReason, PacmanError},
 };
@@ -39,29 +37,32 @@ use crate::{
 /// Synchronizes installed packages with the package list.
 ///
 /// See module documentation for the details.
-pub fn synchronize_packages(cfg: Sync) -> anyhow::Result<()> {
-    let declared = packages::get_declared_packages(cfg.packages, cfg.package_groups)
-        .context("Failed to determine the set of declared packages")?;
-    let installed =
-        packages::get_installed_packages().context("Failed to query for installed packages")?;
-    let organized = packages::organize_packages(&declared, &installed);
+pub(crate) fn synchronize_packages(args: SyncArgs, cfg: Config) -> anyhow::Result<()> {
+    let declared_packages = cfg.packages();
+    let declared_groups = cfg.package_groups();
+
+    let installed = packages::query_packages().context("Failed to query for installed packages")?;
+    let group_packages = packages::query_groups(&declared_groups.elements)
+        .context("Failed to query for packages that belong to the declared package groups")?;
+
+    let declared = packages::merge_declared_packages(&declared_packages.elements, &group_packages);
+    let organized = packages::organize_packages(&declared.packages, &installed);
 
     update_database(&organized).context("Failed to update package database")?;
-    update_and_install_packages(!cfg.no_upgrade, &organized.to_install)
+    update_and_install_packages(args.no_upgrade, &organized.to_install)
         .context("Failed to update and install new packages")?;
 
-    if cfg.cleanup {
-        let unneeded =
-            packages::get_unneeded_packages().context("Failed to query for unneeded packages")?;
-        let mut unneeded = unneeded.iter().map(String::as_str).collect::<Vec<_>>();
-        unneeded.sort_unstable();
-        remove_packages(&unneeded).context("Failed to remove unneeded packages")?;
+    if args.cleanup {
+        let mut unneeded = organized.to_remove.clone();
+        unneeded.extend(&organized.unneeded);
+        remove_packages(&unneeded).context("Failed to remove packages")?;
     } else {
-        remove_packages(&organized.to_remove).context("Failed to remove unneeded packages")?;
+        remove_packages(&organized.to_remove).context("Failed to remove packages")?;
     }
 
-    if let Some(ref xkb_types) = cfg.xkb_types {
-        patch_xkb_types(xkb_types).context("Failed to patch the xkb types file")?;
+    if let Some(xkb_types) = Option::or_else(args.xkb_types.map(PathBuf::from), || cfg.xkb_types())
+    {
+        patch_xkb_types(&xkb_types).context("Failed to patch the xkb types file")?;
     }
 
     Ok(())
@@ -89,13 +90,13 @@ fn update_database(organized: &OrganizedPackages<'_>) -> anyhow::Result<()> {
 }
 
 /// Updates installed packages and installs new ones.
-fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Result<()> {
+fn update_and_install_packages(no_upgrade: bool, to_install: &[&str]) -> anyhow::Result<()> {
     info!(
         "{}{}",
-        if upgrade {
-            "Upgrading installed packages"
-        } else {
+        if no_upgrade {
             "Updating package databases"
+        } else {
+            "Upgrading installed packages"
         },
         if !to_install.is_empty() {
             format!(" and installing {} new packages", to_install.len())
@@ -104,7 +105,7 @@ fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Re
         },
     );
 
-    match pacman::sync(upgrade, to_install) {
+    match pacman::sync(!no_upgrade, to_install) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
             warn!("pacman did not exit successfully, continuing...");
@@ -116,7 +117,9 @@ fn update_and_install_packages(upgrade: bool, to_install: &[&str]) -> anyhow::Re
 
 /// Recursively removes given packages, if they are not needed by other packages.
 fn remove_packages(to_remove: &[&str]) -> anyhow::Result<()> {
-    if to_remove.is_empty() {
+    let to_remove = to_remove.into_iter();
+
+    if to_remove.len() == 0 {
         return Ok(());
     }
 
@@ -149,38 +152,8 @@ fn patch_xkb_types(path: &Path) -> anyhow::Result<()> {
         // regex match ensures the string contains '}'
         let last_line_start = contents.find('}').unwrap();
         contents.insert_str(last_line_start, "    include \"ed\"\n");
-        write_as_root(path, &contents)?;
+        fs::write(path, &contents).with_context(|| format!("Failed to modify {:?}", path))?;
     }
 
     Ok(())
-}
-
-/// Creates a temporary file with the given contents, then moves it to the given path with `sudo`.
-fn write_as_root(path: &Path, contents: &str) -> anyhow::Result<()> {
-    let mut tmp_path = env::temp_dir();
-    tmp_path.push("archman_xkb_types");
-
-    OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tmp_path)
-        .context("Failed to create temporary file")?
-        .write_all(contents.as_bytes())
-        .context("Failed to write to temporary file")?;
-
-    let status = Command::new("sudo")
-        .arg("mv")
-        .arg(&tmp_path)
-        .arg(path)
-        .status()
-        .context("Failed to run 'mv' command")?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(anyhow!(
-            "'sudo mv {:?} {:?}' did not exit successfully",
-            &tmp_path,
-            path,
-        ))
-    }
 }

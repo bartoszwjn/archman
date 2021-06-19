@@ -17,6 +17,6 @@ struct Args {
 
 fn main() {
     let args = Args::from_args();
-    let mut app = archman::config::Args::clap();
+    let mut app = archman::Args::clap();
     app.gen_completions(crate_name!(), Shell::Zsh, args.out_dir);
 }
