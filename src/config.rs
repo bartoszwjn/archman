@@ -117,14 +117,9 @@ impl Config {
             xkb_types: raw_data.xkb_types,
         };
 
-        let absolute_path = if effective_path.is_absolute() {
-            effective_path
-        } else {
-            let mut cwd =
-                env::current_dir().context("Unable to determine current working directory")?;
-            cwd.push(&effective_path);
-            cwd
-        };
+        let absolute_path = effective_path
+            .canonicalize()
+            .context("Failed to determine the canonical path to the configuration file.")?;
         let dir = match absolute_path.parent() {
             Some(_) => {
                 let mut parent = absolute_path;
