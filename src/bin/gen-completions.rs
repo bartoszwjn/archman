@@ -15,6 +15,9 @@ struct Args {
     out_dir: PathBuf,
 }
 
+// TODO add this as a subcommand to the main program
+// TODO other shells?
+
 fn main() {
     let args = Args::from_args();
     let mut app = archman::Args::clap();

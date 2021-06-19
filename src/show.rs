@@ -91,7 +91,6 @@ where
     P: Display,
 {
     let mut packages = packages.into_iter().peekable();
-    println!();
     if packages.peek().is_none() {
         info!("No {}", what.to_lowercase())
     } else {
