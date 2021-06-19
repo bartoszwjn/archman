@@ -72,16 +72,23 @@ pub(crate) fn synchronize_packages(args: SyncArgs, cfg: Config) -> anyhow::Resul
 fn update_database(organized: &OrganizedPackages<'_>) -> anyhow::Result<()> {
     if !organized.to_mark_as_explicit.is_empty() {
         info!(
-            "Marking {} packages as explicitly installed",
+            "Marking {} {} as explicitly installed",
             organized.to_mark_as_explicit.len(),
+            packages_str(organized.to_mark_as_explicit.len()),
         );
         pacman::database(InstallReason::Explicit, &organized.to_mark_as_explicit)?;
     }
 
     if !organized.to_remove.is_empty() {
         info!(
-            "Marking {} packages as installed as dependencies",
+            "Marking {} {} as installed as {}",
             organized.to_remove.len(),
+            packages_str(organized.to_remove.len()),
+            if organized.to_remove.len() == 1 {
+                "dependency"
+            } else {
+                "dependencies"
+            },
         );
         pacman::database(InstallReason::Dependency, &organized.to_remove)?;
     }
@@ -91,19 +98,22 @@ fn update_database(organized: &OrganizedPackages<'_>) -> anyhow::Result<()> {
 
 /// Updates installed packages and installs new ones.
 fn update_and_install_packages(no_upgrade: bool, to_install: &[&str]) -> anyhow::Result<()> {
-    info!(
-        "{}{}",
-        if no_upgrade {
-            "Updating package databases"
-        } else {
-            "Upgrading installed packages"
-        },
-        if !to_install.is_empty() {
-            format!(" and installing {} new packages", to_install.len())
-        } else {
-            "".into()
-        },
-    );
+    let update_str = if no_upgrade {
+        "Updating package databases"
+    } else {
+        "Upgrading installed packages"
+    };
+
+    if !to_install.is_empty() {
+        info!(
+            "{} and installing {} new {}",
+            update_str,
+            to_install.len(),
+            packages_str(to_install.len()),
+        );
+    } else {
+        info!("{}", update_str);
+    }
 
     match pacman::sync(!no_upgrade, to_install) {
         Ok(()) => Ok(()),
@@ -123,7 +133,7 @@ fn remove_packages(to_remove: &[&str]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    info!("Removing {} packages", to_remove.len());
+    info!("Removing {} {}", to_remove.len(), packages_str(to_remove.len()));
     match pacman::remove(to_remove) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
@@ -156,4 +166,12 @@ fn patch_xkb_types(path: &Path) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn packages_str(count: usize) -> &'static str {
+    if count == 1 {
+        "package"
+    } else {
+        "packages"
+    }
 }
