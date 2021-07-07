@@ -1,5 +1,20 @@
 //! Utilities.
 
+/// Prints an error to `stderr` using colours if `stderr` is connected to a terminal.
+macro_rules! error {
+    ($($fmt:expr),+ $(,)?) => {
+        {
+            let use_style = ::atty::is(::atty::Stream::Stderr);
+            let style = if use_style {
+                ::ansi_term::Colour::Red.bold()
+            } else {
+                ::ansi_term::Style::new()
+            };
+            eprintln!("{} {}", style.paint("error:"), ::core::format_args!($($fmt),+));
+        }
+    }
+}
+
 /// Prints a warning to `stderr` using colours if `stderr` is connected to a terminal.
 macro_rules! warn {
     ($($fmt:expr),+ $(,)?) => {
