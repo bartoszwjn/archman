@@ -15,8 +15,8 @@ macro_rules! warn {
     }
 }
 
-/// Print an info string to `stdout` using colours if `stdout` is connected to a terminal.
-macro_rules! info {
+/// Prints a coloured string to `stdout` using colours if `stdout` is connected to a terminal.
+macro_rules! colour {
     ($($fmt:expr),+ $(,)?) => {
         {
             let use_style = ::atty::is(::atty::Stream::Stdout);

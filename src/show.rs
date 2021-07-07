@@ -73,7 +73,7 @@ fn print_summary(
         .max()
         .unwrap();
 
-    info!("Packages:");
+    colour!("Packages:");
     for &(what, n) in summary.iter() {
         println!(
             "  {what:what_width$} : {n:n_width$}",
@@ -92,9 +92,9 @@ where
 {
     let mut packages = packages.into_iter().peekable();
     if packages.peek().is_none() {
-        info!("No {}", what.to_lowercase())
+        colour!("No {}", what.to_lowercase())
     } else {
-        info!("{}:", what);
+        colour!("{}:", what);
         for package in packages {
             println!("  {}", package);
         }

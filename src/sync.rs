@@ -71,7 +71,7 @@ pub(crate) fn synchronize_packages(args: SyncArgs, cfg: Config) -> anyhow::Resul
 /// Updates the install reason of already installed packages.
 fn update_database(organized: &OrganizedPackages<'_>) -> anyhow::Result<()> {
     if !organized.to_mark_as_explicit.is_empty() {
-        info!(
+        colour!(
             "Marking {} {} as explicitly installed",
             organized.to_mark_as_explicit.len(),
             packages_str(organized.to_mark_as_explicit.len()),
@@ -80,7 +80,7 @@ fn update_database(organized: &OrganizedPackages<'_>) -> anyhow::Result<()> {
     }
 
     if !organized.to_remove.is_empty() {
-        info!(
+        colour!(
             "Marking {} {} as installed as {}",
             organized.to_remove.len(),
             packages_str(organized.to_remove.len()),
@@ -105,14 +105,14 @@ fn update_and_install_packages(no_upgrade: bool, to_install: &[&str]) -> anyhow:
     };
 
     if !to_install.is_empty() {
-        info!(
+        colour!(
             "{} and installing {} new {}",
             update_str,
             to_install.len(),
             packages_str(to_install.len()),
         );
     } else {
-        info!("{}", update_str);
+        colour!("{}", update_str);
     }
 
     match pacman::sync(!no_upgrade, to_install) {
@@ -133,7 +133,11 @@ fn remove_packages(to_remove: &[&str]) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    info!("Removing {} {}", to_remove.len(), packages_str(to_remove.len()));
+    colour!(
+        "Removing {} {}",
+        to_remove.len(),
+        packages_str(to_remove.len())
+    );
     match pacman::remove(to_remove) {
         Ok(()) => Ok(()),
         Err(PacmanError::ExitFailure) => {
