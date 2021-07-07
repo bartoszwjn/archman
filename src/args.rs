@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 /// The program's command line arguments.
-#[derive(Clone, Debug, StructOpt)]
+#[derive(Debug, StructOpt)]
 pub struct Args {
     #[structopt(subcommand)]
     pub(crate) subcommand: Subcommand,
@@ -14,7 +14,7 @@ pub struct Args {
 }
 
 /// Options common to all subcommands.
-#[derive(Clone, Debug, StructOpt)]
+#[derive(Debug, StructOpt)]
 pub(crate) struct ArgsCommon {
     /// Path to the configuration file.
     #[structopt(short = "f", long, parse(from_os_str))]
@@ -26,7 +26,7 @@ pub(crate) struct ArgsCommon {
 
 // TODO a better about
 /// The program's subcommands.
-#[derive(Clone, Debug, StructOpt)]
+#[derive(Debug, StructOpt)]
 #[structopt(about = "A configuration utility for my specific Arch Linux setup")]
 pub(crate) enum Subcommand {
     Completions(CompletionsArgs),
@@ -38,7 +38,7 @@ pub(crate) enum Subcommand {
 
 // TODO support other shells
 /// Generate tab-completion script for zsh.
-#[derive(Clone, Debug, StructOpt)]
+#[derive(Debug, StructOpt)]
 pub(crate) struct CompletionsArgs {
     /// The directory to put the output in.
     #[structopt(parse(from_os_str))]
@@ -46,15 +46,15 @@ pub(crate) struct CompletionsArgs {
 }
 
 /// Create copies of configuration files in declared locations.
-#[derive(Clone, Debug, StructOpt)]
+#[derive(Debug, StructOpt)]
 pub(crate) struct CopyArgs {}
 
 /// Create links to configuration files in declared locations.
-#[derive(Clone, Debug, StructOpt)]
+#[derive(Debug, StructOpt)]
 pub(crate) struct LinkArgs {}
 
 /// Display information about declared and currently installed packages.
-#[derive(Clone, Debug, StructOpt)]
+#[derive(Debug, StructOpt)]
 pub(crate) struct ShowArgs {
     /// Equivalent to specifying '-e', '-i', '-r' and '-u'.
     #[structopt(short = "a", long)]
@@ -74,7 +74,7 @@ pub(crate) struct ShowArgs {
 }
 
 /// Synchronize installed packages with the package list.
-#[derive(Clone, Debug, StructOpt)]
+#[derive(Debug, StructOpt)]
 pub(crate) struct SyncArgs {
     /// Remove all unneeded packages.
     #[structopt(short = "c", long)]

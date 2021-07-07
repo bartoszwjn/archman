@@ -30,7 +30,7 @@ pub(crate) enum PacmanError {
 }
 
 /// Filter for packages returned from a query.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct QueryFilter {
     /// Constrain the install reason.
     pub(crate) install_reason: Option<InstallReason>,
