@@ -14,6 +14,8 @@ use std::{
 use anyhow::{anyhow, bail, Context};
 use serde::Deserialize;
 
+use crate::args::ArgsCommon;
+
 /// The configuration specified in the config file.
 #[derive(Debug)]
 pub(crate) struct Config {
@@ -98,9 +100,12 @@ pub(crate) struct FlattenedSet<T> {
 
 impl Config {
     /// Reads the configuration file from the given path or the default path.
-    pub(crate) fn read_from_file(path: Option<PathBuf>) -> anyhow::Result<Self> {
-        let home = get_home_directory().context("Unable to locate the home directory")?;
-        let effective_path = path.unwrap_or_else(|| Self::default_path(&home));
+    pub(crate) fn read_from_file(args: ArgsCommon) -> anyhow::Result<Self> {
+        let home = match args.home {
+            Some(home) => home,
+            None => get_home_directory().context("Unable to locate the home directory")?,
+        };
+        let effective_path = args.config.unwrap_or_else(|| Self::default_path(&home));
 
         let contents = fs::read_to_string(&effective_path)
             .with_context(|| format!("Failed to read the contents of file {:?}", effective_path))?;
@@ -228,32 +233,23 @@ impl Config {
 /// If the program was invoked with `sudo`, returns the home directory of the user running the
 /// `sudo` command.
 fn get_home_directory() -> anyhow::Result<PathBuf> {
-    let user =
-        env::var_os("USER").ok_or_else(|| anyhow!("The environment variable USER is not set"))?;
     match get_sudo_user() {
+        None => env::var_os("HOME")
+            .map(From::from)
+            .ok_or_else(|| anyhow!("The environment variable HOME is not set")),
         Some(sudo_user) => {
             let passwd_path = "/etc/passwd";
             let passwd_contents = fs::read(passwd_path).with_context(|| {
                 format!("Failed to read the contents of the {:?} file", passwd_path)
             })?;
-            let home =
-                find_home_in_passwd_file(&sudo_user, &passwd_contents).with_context(|| {
+            find_home_in_passwd_file(&sudo_user, &passwd_contents)
+                .map(From::from)
+                .with_context(|| {
                     format!(
                         "Failed to determine the home directory of user {:?}",
                         sudo_user
                     )
-                })?;
-            info!(
-                "Running as user {:?} with 'sudo' invoked by user {:?} (home directory at {:?})",
-                user, sudo_user, home
-            );
-            Ok(home.into())
-        }
-        None => {
-            let home = env::var_os("HOME")
-                .ok_or_else(|| anyhow!("The environment variable HOME is not set"))?;
-            info!("Running as user {:?} (home directory at {:?})", user, home);
-            Ok(home.into())
+                })
         }
     }
 }
@@ -285,7 +281,11 @@ fn find_home_in_passwd_file<'a>(user: &OsStr, contents: &'a [u8]) -> anyhow::Res
 }
 
 impl<K1, T> PerHostname<K1, T> {
-    fn map_keys<K2: Eq + Hash, F: FnMut(K1) -> K2>(self, mut f: F) -> PerHostname<K2, T> {
+    fn map_keys<K2, F>(self, mut f: F) -> PerHostname<K2, T>
+    where
+        K2: Eq + Hash,
+        F: FnMut(K1) -> K2,
+    {
         PerHostname {
             common: self.common,
             hosts: self.hosts.into_iter().map(|(k, v)| (f(k), v)).collect(),

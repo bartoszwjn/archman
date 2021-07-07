@@ -23,7 +23,7 @@ use config::Config;
 
 /// Runs the program, given the parsed command line arguments.
 pub fn run(args: Args) -> anyhow::Result<()> {
-    let config = Config::read_from_file(args.config)?;
+    let config = Config::read_from_file(args.common)?;
 
     match args.subcommand {
         Subcommand::Completions(completions_args) => {

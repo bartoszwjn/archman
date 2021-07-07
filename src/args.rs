@@ -1,6 +1,6 @@
 //! Command line arguments.
 
-use std::{ffi::OsString, path::PathBuf};
+use std::path::PathBuf;
 
 use structopt::StructOpt;
 
@@ -9,10 +9,19 @@ use structopt::StructOpt;
 pub struct Args {
     #[structopt(subcommand)]
     pub(crate) subcommand: Subcommand,
+    #[structopt(flatten)]
+    pub(crate) common: ArgsCommon,
+}
+
+/// Options common to all subcommands.
+#[derive(Clone, Debug, StructOpt)]
+pub(crate) struct ArgsCommon {
     /// Path to the configuration file.
-    #[structopt(short = "f", long)]
+    #[structopt(short = "f", long, parse(from_os_str))]
     pub(crate) config: Option<PathBuf>,
-    // TODO override home directory
+    /// Path to the user's home directory.
+    #[structopt(short = "d", long, parse(from_os_str))]
+    pub(crate) home: Option<PathBuf>,
 }
 
 // TODO a better about
@@ -75,5 +84,5 @@ pub(crate) struct SyncArgs {
     pub(crate) no_upgrade: bool,
     /// Path to the xkb types file.
     #[structopt(long, parse(from_os_str))]
-    pub(crate) xkb_types: Option<OsString>,
+    pub(crate) xkb_types: Option<PathBuf>,
 }

@@ -19,10 +19,7 @@
 //! Bonus step:
 //! - check if the xkb_types file needs to be patched (TODO: run arbitrary scripts at this point?)
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::Path};
 
 use anyhow::{ensure, Context};
 use regex::Regex;
@@ -60,8 +57,7 @@ pub(crate) fn synchronize_packages(args: SyncArgs, cfg: Config) -> anyhow::Resul
         remove_packages(&organized.to_remove).context("Failed to remove packages")?;
     }
 
-    if let Some(xkb_types) = Option::or_else(args.xkb_types.map(PathBuf::from), || cfg.xkb_types())
-    {
+    if let Some(xkb_types) = args.xkb_types.or_else(|| cfg.xkb_types()) {
         patch_xkb_types(&xkb_types).context("Failed to patch the xkb types file")?;
     }
 
