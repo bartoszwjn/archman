@@ -10,8 +10,7 @@ macro_rules! warn {
             } else {
                 ::ansi_term::Style::new()
             };
-            eprint!("{}warning:{} ", style.prefix(), style.suffix());
-            eprintln!($($fmt),+);
+            eprintln!("{} {}", style.paint("warning:"), ::core::format_args!($($fmt),+));
         }
     }
 }
@@ -26,9 +25,7 @@ macro_rules! info {
             } else {
                 ::ansi_term::Style::new()
             };
-            print!("{}", style.prefix());
-            print!($($fmt),+);
-            println!("{}", style.suffix());
+            println!("{}{}{}", style.prefix(), ::core::format_args!($($fmt),+), style.suffix());
         }
     }
 }
@@ -43,9 +40,7 @@ macro_rules! bold {
             } else {
                 ::ansi_term::Style::new()
             };
-            print!("{}", style.prefix());
-            print!($($fmt),+);
-            println!("{}", style.suffix());
+            println!("{}{}{}", style.prefix(), ::core::format_args!($($fmt),+), style.suffix());
         }
     }
 }
