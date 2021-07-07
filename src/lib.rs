@@ -8,6 +8,7 @@
 mod util;
 
 mod args;
+mod completions;
 mod config;
 mod link;
 mod packages;
@@ -25,6 +26,10 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     let config = Config::read_from_file(args.config)?;
 
     match args.subcommand {
+        Subcommand::Completions(completions_args) => {
+            completions::generate_completions(completions_args);
+            Ok(())
+        }
         Subcommand::Copy(copy_args) => link::create_copies(copy_args, config),
         Subcommand::Link(link_args) => link::create_links(link_args, config),
         Subcommand::Show(show_args) => show::show_packages(show_args, config),

@@ -5,8 +5,6 @@ authors = ["Bartosz Wojno <bartoszwjn@gmail.com>"]
 edition = "2018"
 description = "A configuration utility for my specific Arch Linux setup"
 
-default-run = "archman"
-
 [dependencies]
 ansi_term = "0.12.1"
 anyhow = "1.0.40"

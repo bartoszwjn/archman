@@ -4,7 +4,7 @@ use std::{ffi::OsString, path::PathBuf};
 
 use structopt::StructOpt;
 
-/// The programs command line arguments.
+/// The program's command line arguments.
 #[derive(Clone, Debug, StructOpt)]
 pub struct Args {
     #[structopt(subcommand)]
@@ -16,14 +16,24 @@ pub struct Args {
 }
 
 // TODO a better about
-/// The programs subcommands.
+/// The program's subcommands.
 #[derive(Clone, Debug, StructOpt)]
 #[structopt(about = "A configuration utility for my specific Arch Linux setup")]
 pub(crate) enum Subcommand {
+    Completions(CompletionsArgs),
     Copy(CopyArgs),
     Link(LinkArgs),
     Show(ShowArgs),
     Sync(SyncArgs),
+}
+
+// TODO support other shells
+/// Generate tab-completion script for zsh.
+#[derive(Clone, Debug, StructOpt)]
+pub(crate) struct CompletionsArgs {
+    /// The directory to put the output in.
+    #[structopt(parse(from_os_str))]
+    pub(crate) out_dir: PathBuf,
 }
 
 /// Create copies of configuration files in declared locations.
