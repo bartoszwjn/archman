@@ -15,6 +15,21 @@ macro_rules! warn {
     }
 }
 
+/// Prints an info string to `stdout` using a bold style if `stdout` is connected to a terminal.
+macro_rules! info {
+    ($($fmt:expr),+ $(,)?) => {
+        {
+            let use_style = ::atty::is(::atty::Stream::Stdout);
+            let style = if use_style {
+                ::ansi_term::Style::new().bold()
+            } else {
+                ::ansi_term::Style::new()
+            };
+            println!("{} {}", style.paint("info:"), ::core::format_args!($($fmt),+));
+        }
+    }
+}
+
 /// Prints a coloured string to `stdout` using colours if `stdout` is connected to a terminal.
 macro_rules! colour {
     ($($fmt:expr),+ $(,)?) => {

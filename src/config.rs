@@ -4,9 +4,10 @@ use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs,
     hash::Hash,
+    os::unix::ffi::OsStrExt,
     path::{Component, Path, PathBuf},
 };
 
@@ -222,12 +223,65 @@ impl Config {
     }
 }
 
-// TODO detect sudo
 /// Returns the path to the user's home directory.
+///
+/// If the program was invoked with `sudo`, returns the home directory of the user running the
+/// `sudo` command.
 fn get_home_directory() -> anyhow::Result<PathBuf> {
-    env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| anyhow!("The environment variable HOME is not set"))
+    let user =
+        env::var_os("USER").ok_or_else(|| anyhow!("The environment variable USER is not set"))?;
+    match get_sudo_user() {
+        Some(sudo_user) => {
+            let passwd_path = "/etc/passwd";
+            let passwd_contents = fs::read(passwd_path).with_context(|| {
+                format!("Failed to read the contents of the {:?} file", passwd_path)
+            })?;
+            let home =
+                find_home_in_passwd_file(&sudo_user, &passwd_contents).with_context(|| {
+                    format!(
+                        "Failed to determine the home directory of user {:?}",
+                        sudo_user
+                    )
+                })?;
+            info!(
+                "Running as user {:?} with 'sudo' invoked by user {:?} (home directory at {:?})",
+                user, sudo_user, home
+            );
+            Ok(home.into())
+        }
+        None => {
+            let home = env::var_os("HOME")
+                .ok_or_else(|| anyhow!("The environment variable HOME is not set"))?;
+            info!("Running as user {:?} (home directory at {:?})", user, home);
+            Ok(home.into())
+        }
+    }
+}
+
+/// If this program was invoked with `sudo`, returns the login name of the user running the `sudo`
+/// command, otherwise returns `None`.
+fn get_sudo_user() -> Option<OsString> {
+    env::var_os("SUDO_USER")
+}
+
+/// Parses the contents of the passwd file and returns the path to the home directory of the user
+/// with the given login name.
+fn find_home_in_passwd_file<'a>(user: &OsStr, contents: &'a [u8]) -> anyhow::Result<&'a OsStr> {
+    for line in contents.split(|b| *b == b'\n') {
+        let mut parts = line.split(|b| *b == b':');
+        let name = match parts.next() {
+            Some(name) => OsStr::from_bytes(name),
+            None => bail!("Invalid line in the passwd file: no login name specified"),
+        };
+        if name == user {
+            let home = match parts.nth(4) {
+                Some(home) => OsStr::from_bytes(home),
+                None => bail!("Invalid line in the passwd file: no home directory specified"),
+            };
+            return Ok(home);
+        }
+    }
+    bail!("Could not find the user {:?} in the passwd file", user);
 }
 
 impl<K1, T> PerHostname<K1, T> {
@@ -307,5 +361,37 @@ impl<T> Default for NestedSet<T> {
     /// Returns an empty `Array` of _things_.
     fn default() -> Self {
         Self::Array(Default::default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_passwd_file() {
+        let contents = concat!(
+            "root:x:0:0::/root:/bin/bash\n",
+            "user1:x:1000:1000::/home/user1:/bin/bash\n",
+            "user2:x:1001:1001:John Smith:/home/user2\n",
+            "user3:x:1002:1002::/home/user3:/bin/bash\n",
+            "user4:x:1003:1003::/home/user4\n",
+            "user5:x:1004:1004::/home/user5:/bin/bash\n",
+        )
+        .as_bytes();
+
+        for (name, home) in [
+            ("root", "/root"),
+            ("user1", "/home/user1"),
+            ("user2", "/home/user2"),
+            ("user3", "/home/user3"),
+            ("user4", "/home/user4"),
+            ("user5", "/home/user5"),
+        ] {
+            let (name, home): (&OsStr, &OsStr) = (name.as_ref(), home.as_ref());
+            assert_eq!(home, find_home_in_passwd_file(name, contents).unwrap());
+        }
+
+        find_home_in_passwd_file("user0".as_ref(), contents).unwrap_err();
     }
 }
