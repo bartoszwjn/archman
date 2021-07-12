@@ -4,3 +4,4 @@ What other functionality could be added:
 - install packages from AUR
 - flag for overwriting files during link and copy
 - per-username configuration
+- post-sync hooks
