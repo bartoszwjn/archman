@@ -34,7 +34,7 @@ use crate::{
 /// Synchronizes installed packages with the package list.
 ///
 /// See module documentation for the details.
-pub(crate) fn synchronize_packages(args: SyncArgs, cfg: Config) -> anyhow::Result<()> {
+pub fn synchronize_packages(args: SyncArgs, cfg: Config) -> anyhow::Result<()> {
     let declared_packages = cfg.packages();
     let declared_groups = cfg.package_groups();
 

@@ -18,7 +18,7 @@ use crate::args::ArgsCommon;
 
 /// The configuration specified in the config file.
 #[derive(Debug)]
-pub(crate) struct Config {
+pub struct Config {
     /// The directory where the file is located.
     dir: PathBuf,
     /// The path to the user's home directory.
@@ -97,16 +97,16 @@ enum NestedSet<T> {
 
 /// A flattened [`NestedSet`].
 #[derive(Debug)]
-pub(crate) struct FlattenedSet<T> {
+pub struct FlattenedSet<T> {
     /// The elements of the set.
-    pub(crate) elements: HashSet<T>,
+    pub elements: HashSet<T>,
     /// The elements that occured more than once.
-    pub(crate) duplicates: HashSet<T>,
+    pub duplicates: HashSet<T>,
 }
 
 impl Config {
     /// Reads the configuration file from the given path or the default path.
-    pub(crate) fn read_from_file(args: ArgsCommon) -> anyhow::Result<Self> {
+    pub fn read_from_file(args: ArgsCommon) -> anyhow::Result<Self> {
         let home = match args.home {
             Some(home) => home,
             None => get_home_directory().context("Unable to locate the home directory")?,
@@ -159,18 +159,18 @@ impl Config {
         path
     }
 
-    pub(crate) fn xkb_types(&self) -> Option<PathBuf> {
+    pub fn xkb_types(&self) -> Option<PathBuf> {
         self.data
             .xkb_types
             .as_ref()
             .map(|p| self.resolve_path(p.as_ref()))
     }
 
-    pub(crate) fn copies(&self) -> HashMap<PathBuf, PathBuf> {
+    pub fn copies(&self) -> HashMap<PathBuf, PathBuf> {
         self.merge_links_or_copies(&self.data.copies)
     }
 
-    pub(crate) fn links(&self) -> HashMap<PathBuf, PathBuf> {
+    pub fn links(&self) -> HashMap<PathBuf, PathBuf> {
         self.merge_links_or_copies(&self.data.links)
     }
 
@@ -193,7 +193,7 @@ impl Config {
         ret
     }
 
-    pub(crate) fn package_groups(&self) -> FlattenedSet<&str> {
+    pub fn package_groups(&self) -> FlattenedSet<&str> {
         let mut flattened = FlattenedSet::new();
         if let Some(ref common) = self.data.package_groups.common {
             flattened.extend(common.iter().map(AsRef::as_ref));
@@ -204,7 +204,7 @@ impl Config {
         flattened
     }
 
-    pub(crate) fn packages(&self) -> FlattenedSet<&str> {
+    pub fn packages(&self) -> FlattenedSet<&str> {
         let mut flattened = FlattenedSet::new();
         if let Some(ref common) = self.data.packages.common {
             common.flatten_into(&mut flattened);
@@ -215,7 +215,7 @@ impl Config {
         flattened
     }
 
-    pub(crate) fn services(&self) -> FlattenedSet<&str> {
+    pub fn services(&self) -> FlattenedSet<&str> {
         let mut flattened = FlattenedSet::new();
         if let Some(ref common) = self.data.services.common {
             flattened.extend(common.iter().map(AsRef::as_ref));

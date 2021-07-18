@@ -13,7 +13,7 @@ use crate::args::{Args, CompletionsArgs};
 ///
 /// Will panic on any kind of IO error related to writing to the provided directory. It would be
 /// nicer to return an error instead, but [`clap`] doesn't let us do that.
-pub(crate) fn generate_completions(args: CompletionsArgs) {
+pub fn generate_completions(args: CompletionsArgs) {
     let mut app = Args::clap();
     // TODO at least try to detect some errors, the panic messages are awful
     app.gen_completions(crate_name!(), Shell::Zsh, args.out_dir);

@@ -17,7 +17,7 @@ type Result<T, E = PacmanError> = std::result::Result<T, E>;
 
 /// Errors that can occur when trying to run `pacman`.
 #[derive(Debug, Error)]
-pub(crate) enum PacmanError {
+pub enum PacmanError {
     /// `pacman` did not exit successfully.
     #[error("pacman did not exit successfully")]
     ExitFailure,
@@ -31,19 +31,19 @@ pub(crate) enum PacmanError {
 
 /// Filter for packages returned from a query.
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct QueryFilter {
+pub struct QueryFilter {
     /// Constrain the install reason.
-    pub(crate) install_reason: Option<InstallReason>,
+    pub install_reason: Option<InstallReason>,
     /// Only packages not (optionally) required by any other package.
     // TODO: ignore optional dependencies?
-    pub(crate) unrequired: bool,
+    pub unrequired: bool,
     /// Only outdated packages.
-    pub(crate) outdated: bool,
+    pub outdated: bool,
 }
 
 /// Install reason of a package.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum InstallReason {
+pub enum InstallReason {
     /// Explicitly installed.
     Explicit,
     /// Installed as a dependency of another package.
@@ -55,7 +55,7 @@ pub(crate) enum InstallReason {
 /// # Arguments
 /// - `install_reason`: the install reason to be set for the specified `packages`.
 /// - `packages`: packages that should have their database entries modified.
-pub(crate) fn database<P, S>(install_reason: InstallReason, packages: P) -> Result<()>
+pub fn database<P, S>(install_reason: InstallReason, packages: P) -> Result<()>
 where
     P: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -78,7 +78,7 @@ where
 /// # Arguments
 /// - `system_upgrade`: update outdated packages (`-u` flag).
 /// - `packages`: additional packages to be installed.
-pub(crate) fn sync<P, S>(system_upgrade: bool, packages: P) -> Result<()>
+pub fn sync<P, S>(system_upgrade: bool, packages: P) -> Result<()>
 where
     P: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -99,7 +99,7 @@ where
 ///
 /// # Arguments
 /// - `packages`: packages that should be removed.
-pub(crate) fn remove<P, S>(packages: P) -> Result<()>
+pub fn remove<P, S>(packages: P) -> Result<()>
 where
     P: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -130,7 +130,7 @@ fn run_for_status(mut cmd: Command) -> Result<()> {
 ///
 /// The `--native` (`-n`) flag is always used. `stdout` is captured and parsed, `stderr` is
 /// inherited from the current process.
-pub(crate) fn query(filter: QueryFilter) -> Result<HashSet<String>> {
+pub fn query(filter: QueryFilter) -> Result<HashSet<String>> {
     let mut cmd = Command::new("pacman");
     cmd.args(&["-Q", "-q", "-n"]);
     if let Some(install_reason) = filter.install_reason {
@@ -168,7 +168,7 @@ pub(crate) fn query(filter: QueryFilter) -> Result<HashSet<String>> {
 /// `pacman -Sg`
 ///
 /// Retrieves the list of packages that belong to the given `groups`.
-pub(crate) fn groups<'a, G>(groups: G) -> Result<HashMap<String, &'a str>>
+pub fn groups<'a, G>(groups: G) -> Result<HashMap<String, &'a str>>
 where
     G: IntoIterator<Item = &'a str>,
 {

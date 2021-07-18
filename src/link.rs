@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// Creates symbolic links to files specified in `cfg`.
-pub(crate) fn create_links(args: LinkArgs, cfg: Config) {
+pub fn create_links(args: LinkArgs, cfg: Config) {
     for (location, target) in cfg.links() {
         let parent = match location.parent() {
             Some(parent) => parent,
@@ -26,7 +26,7 @@ pub(crate) fn create_links(args: LinkArgs, cfg: Config) {
 }
 
 /// Creates copies of files specified in `cfg`.
-pub(crate) fn create_copies(args: CopyArgs, cfg: Config) {
+pub fn create_copies(args: CopyArgs, cfg: Config) {
     for (copy, original) in cfg.copies() {
         let parent = match copy.parent() {
             Some(parent) => parent,

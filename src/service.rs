@@ -14,7 +14,7 @@ struct ServiceStatus {
 }
 
 /// Synchronizes enabled systemd services with the service list.
-pub(crate) fn synchronize_services(args: ServiceArgs, config: Config) -> anyhow::Result<()> {
+pub fn synchronize_services(args: ServiceArgs, config: Config) -> anyhow::Result<()> {
     let services = config.services();
     warn_about_duplicate_services(&services.duplicates);
 

@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Prints out information about declared and installed packages.
-pub(crate) fn show_packages(args: ShowArgs, cfg: Config) -> anyhow::Result<()> {
+pub fn show_packages(args: ShowArgs, cfg: Config) -> anyhow::Result<()> {
     let declared_packages = cfg.packages();
     let declared_groups = cfg.package_groups();
 

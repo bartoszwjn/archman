@@ -6,29 +6,29 @@ use crate::pacman::{self, InstallReason, QueryFilter};
 
 /// Packages currently installed on our system.
 #[derive(Debug)]
-pub(crate) struct InstalledPackages {
-    pub(crate) explicit: HashSet<String>,
-    pub(crate) dependencies: HashSet<String>,
-    pub(crate) unneeded: HashSet<String>,
+pub struct InstalledPackages {
+    pub explicit: HashSet<String>,
+    pub dependencies: HashSet<String>,
+    pub unneeded: HashSet<String>,
 }
 
 /// Packages organized by what we should do with them.
 #[derive(Debug)]
-pub(crate) struct OrganizedPackages<'a> {
-    pub(crate) to_install: Vec<&'a str>,
-    pub(crate) to_mark_as_explicit: Vec<&'a str>,
-    pub(crate) to_remove: Vec<&'a str>,
-    pub(crate) unneeded: Vec<&'a str>,
+pub struct OrganizedPackages<'a> {
+    pub to_install: Vec<&'a str>,
+    pub to_mark_as_explicit: Vec<&'a str>,
+    pub to_remove: Vec<&'a str>,
+    pub unneeded: Vec<&'a str>,
 }
 
 #[derive(Debug)]
-pub(crate) struct MergedPackages<'a> {
-    pub(crate) packages: HashSet<&'a str>,
-    pub(crate) duplicates: HashMap<&'a str, &'a str>,
+pub struct MergedPackages<'a> {
+    pub packages: HashSet<&'a str>,
+    pub duplicates: HashMap<&'a str, &'a str>,
 }
 
 /// Queries for packages currently installed explicitly or as dependencies.
-pub(crate) fn query_packages() -> anyhow::Result<InstalledPackages> {
+pub fn query_packages() -> anyhow::Result<InstalledPackages> {
     let explicit = pacman::query(QueryFilter {
         install_reason: Some(InstallReason::Explicit),
         ..QueryFilter::default()
@@ -50,14 +50,14 @@ pub(crate) fn query_packages() -> anyhow::Result<InstalledPackages> {
     })
 }
 
-pub(crate) fn query_groups<'a>(
+pub fn query_groups<'a>(
     groups: &HashSet<&'a str>,
 ) -> anyhow::Result<HashMap<String, &'a str>> {
     pacman::groups(groups.iter().copied()).map_err(Into::into)
 }
 
 /// Merges declared packages and package groups into a single set of packages.
-pub(crate) fn merge_declared_packages<'a>(
+pub fn merge_declared_packages<'a>(
     packages: &HashSet<&'a str>,
     group_packages: &'a HashMap<String, &'a str>,
 ) -> MergedPackages<'a> {
@@ -80,7 +80,7 @@ pub(crate) fn merge_declared_packages<'a>(
 }
 
 /// Organizes packages based on what we should do with them.
-pub(crate) fn organize_packages<'a>(
+pub fn organize_packages<'a>(
     declared: &HashSet<&'a str>,
     installed: &'a InstalledPackages,
 ) -> OrganizedPackages<'a> {
