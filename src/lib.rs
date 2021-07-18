@@ -28,8 +28,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
 
     match args.subcommand {
         Subcommand::Completions(completions_args) => {
-            completions::generate_completions(completions_args);
-            Ok(())
+            completions::generate_completions(completions_args)
         }
         Subcommand::Copy(copy_args) => {
             link::create_copies(copy_args, config);
