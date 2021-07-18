@@ -28,7 +28,7 @@ pub(crate) struct MergedPackages<'a> {
 }
 
 /// Queries for packages currently installed explicitly or as dependencies.
-pub(crate) fn query_packages<'a>() -> anyhow::Result<InstalledPackages> {
+pub(crate) fn query_packages() -> anyhow::Result<InstalledPackages> {
     let explicit = pacman::query(QueryFilter {
         install_reason: Some(InstallReason::Explicit),
         ..QueryFilter::default()

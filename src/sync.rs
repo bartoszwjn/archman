@@ -17,7 +17,7 @@
 //!   not required by other packages
 //!
 //! Bonus step:
-//! - check if the xkb_types file needs to be patched (TODO: run arbitrary scripts at this point?)
+//! - check if the xkb_types file needs to be patched
 
 use std::{fs, path::Path};
 
@@ -44,6 +44,8 @@ pub(crate) fn synchronize_packages(args: SyncArgs, cfg: Config) -> anyhow::Resul
 
     let declared = packages::merge_declared_packages(&declared_packages.elements, &group_packages);
     let organized = packages::organize_packages(&declared.packages, &installed);
+
+    // TODO warn about duplicate packages
 
     update_database(&organized).context("Failed to update package database")?;
     update_and_install_packages(args.no_upgrade, &organized.to_install)
@@ -123,9 +125,7 @@ fn update_and_install_packages(no_upgrade: bool, to_install: &[&str]) -> anyhow:
 
 /// Recursively removes given packages, if they are not needed by other packages.
 fn remove_packages(to_remove: &[&str]) -> anyhow::Result<()> {
-    let to_remove = to_remove.into_iter();
-
-    if to_remove.len() == 0 {
+    if to_remove.is_empty() {
         return Ok(());
     }
 

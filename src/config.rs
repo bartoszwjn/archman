@@ -331,7 +331,7 @@ impl<T> NestedSet<T> {
             match this {
                 NestedSet::Singleton(x) => f(x),
                 NestedSet::Map(map) => {
-                    for (_, subset) in map {
+                    for subset in map.values() {
                         do_for_each(subset, f);
                     }
                 }

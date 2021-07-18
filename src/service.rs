@@ -26,9 +26,7 @@ pub(crate) fn synchronize_services(args: ServiceArgs, config: Config) -> anyhow:
     let to_enable = find_services_to_enable(&services.elements, args.start)
         .context("Failed to determine the set of services to enable")?;
 
-    if !to_enable.is_empty() {
-        enable_services(&to_enable, args.start).context("Failed to enable declared services")?;
-    }
+    enable_services(&to_enable, args.start).context("Failed to enable declared services")?;
 
     Ok(())
 }
@@ -82,6 +80,10 @@ fn check_service_status(service: &str) -> anyhow::Result<ServiceStatus> {
 }
 
 fn enable_services(services: &[&str], start: bool) -> anyhow::Result<()> {
+    if services.is_empty() {
+        return Ok(());
+    }
+
     if start {
         colour!("Enabling and starting {} {}", services.len(), services_str(services.len()));
     } else {

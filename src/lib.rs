@@ -31,8 +31,14 @@ pub fn run(args: Args) -> anyhow::Result<()> {
             completions::generate_completions(completions_args);
             Ok(())
         }
-        Subcommand::Copy(copy_args) => Ok(link::create_copies(copy_args, config)),
-        Subcommand::Link(link_args) => Ok(link::create_links(link_args, config)),
+        Subcommand::Copy(copy_args) => {
+            link::create_copies(copy_args, config);
+            Ok(())
+        }
+        Subcommand::Link(link_args) => {
+            link::create_links(link_args, config);
+            Ok(())
+        }
         Subcommand::Service(service_args) => service::synchronize_services(service_args, config),
         Subcommand::Show(show_args) => show::show_packages(show_args, config),
         Subcommand::Sync(sync_args) => sync::synchronize_packages(sync_args, config),

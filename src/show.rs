@@ -22,7 +22,7 @@ pub(crate) fn show_packages(args: ShowArgs, cfg: Config) -> anyhow::Result<()> {
     let declared = packages::merge_declared_packages(&declared_packages.elements, &group_packages);
     let organized = packages::organize_packages(&declared.packages, &installed);
 
-    // TODO print warnings
+    // TODO warn about duplicate packages
 
     print_summary(&declared.packages, &installed, &organized);
     if args.all || args.to_install {
