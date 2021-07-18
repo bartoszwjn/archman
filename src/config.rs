@@ -61,6 +61,12 @@ struct ConfigData<H> {
     /// and those specified for a specific host.
     #[serde(default, bound = "H: Deserialize<'de> + Eq + Hash")]
     packages: PerHostname<H, NestedSet<String>>,
+    /// The systemd services that should be enabled on our system.
+    ///
+    /// The effective set of services is a set union of services specified in the `common` section
+    /// and those specified for a specific host.
+    #[serde(default, bound = "H: Deserialize<'de> + Eq + Hash")]
+    services: PerHostname<H, Vec<String>>,
     /// Path to the xkb types file.
     xkb_types: Option<String>,
 }
@@ -120,6 +126,7 @@ impl Config {
             links: raw_data.links.map_keys(OsString::from),
             package_groups: raw_data.package_groups.map_keys(OsString::from),
             packages: raw_data.packages.map_keys(OsString::from),
+            services: raw_data.services.map_keys(OsString::from),
             xkb_types: raw_data.xkb_types,
         };
 
@@ -204,6 +211,17 @@ impl Config {
         }
         if let Some(host) = self.data.packages.hosts.get(&self.hostname) {
             host.flatten_into(&mut flattened);
+        }
+        flattened
+    }
+
+    pub(crate) fn services(&self) -> FlattenedSet<&str> {
+        let mut flattened = FlattenedSet::new();
+        if let Some(ref common) = self.data.services.common {
+            flattened.extend(common.iter().map(AsRef::as_ref));
+        }
+        if let Some(host) = self.data.services.hosts.get(&self.hostname) {
+            flattened.extend(host.iter().map(AsRef::as_ref));
         }
         flattened
     }
