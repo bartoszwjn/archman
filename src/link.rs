@@ -11,7 +11,6 @@ use crate::{
 
 /// Creates symbolic links to files specified in `cfg`.
 pub(crate) fn create_links(args: LinkArgs, cfg: Config) {
-    let LinkArgs {} = args;
     for (location, target) in cfg.links() {
         let parent = match location.parent() {
             Some(parent) => parent,
@@ -20,7 +19,7 @@ pub(crate) fn create_links(args: LinkArgs, cfg: Config) {
                 continue;
             }
         };
-        if let Err(err) = create_link(&location, &target, parent) {
+        if let Err(err) = create_link(&location, &target, parent, args.force) {
             error!("{:#}", err);
         }
     }
@@ -28,7 +27,6 @@ pub(crate) fn create_links(args: LinkArgs, cfg: Config) {
 
 /// Creates copies of files specified in `cfg`.
 pub(crate) fn create_copies(args: CopyArgs, cfg: Config) {
-    let CopyArgs {} = args;
     for (copy, original) in cfg.copies() {
         let parent = match copy.parent() {
             Some(parent) => parent,
@@ -37,13 +35,18 @@ pub(crate) fn create_copies(args: CopyArgs, cfg: Config) {
                 continue;
             }
         };
-        if let Err(err) = create_copy(&copy, &original, parent) {
+        if let Err(err) = create_copy(&copy, &original, parent, args.force) {
             error!("{:#}", err);
         }
     }
 }
 
-fn create_link(location: &Path, target: &Path, parent: &Path) -> anyhow::Result<()> {
+fn create_link(
+    location: &Path,
+    target: &Path,
+    parent: &Path,
+    overwrite: bool,
+) -> anyhow::Result<()> {
     match location.symlink_metadata() {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             let old_target = location
@@ -51,6 +54,12 @@ fn create_link(location: &Path, target: &Path, parent: &Path) -> anyhow::Result<
                 .with_context(|| format!("Failed to read the target of link {:?}", location))?;
             if old_target == target {
                 info!("{:?} already exists", location);
+            } else if overwrite {
+                fs::remove_file(location)
+                    .with_context(|| format!("Failed to remove {:?}", location))?;
+                unix::fs::symlink(target, location)
+                    .with_context(|| format!("Failed to create {:?}", location))?;
+                info!("Created link {:?} -> {:?}", location, target);
             } else {
                 warn!(
                     "{:?} already exists, but its target is {:?}, (expected {:?})",
@@ -73,7 +82,7 @@ fn create_link(location: &Path, target: &Path, parent: &Path) -> anyhow::Result<
     Ok(())
 }
 
-fn create_copy(copy: &Path, original: &Path, parent: &Path) -> anyhow::Result<()> {
+fn create_copy(copy: &Path, original: &Path, parent: &Path, overwrite: bool) -> anyhow::Result<()> {
     match copy.symlink_metadata() {
         Ok(metadata) if metadata.file_type().is_file() => {
             let original_contents = fs::read(original)
@@ -82,6 +91,10 @@ fn create_copy(copy: &Path, original: &Path, parent: &Path) -> anyhow::Result<()
                 .with_context(|| format!("Failed to read the contents of {:?}", copy))?;
             if original_contents == dest_contents {
                 info!("{:?} already exists", copy);
+            } else if overwrite {
+                fs::copy(original, copy)
+                    .with_context(|| format!("Failed to copy {:?} to {:?}", original, copy))?;
+                info!("Copied {:?} -> {:?}", original, copy);
             } else {
                 warn!(
                     "{:?} already exists, but is different from {:?}",

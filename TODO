@@ -1,7 +1,5 @@
 What other functionality could be added:
-- systemd services
 - programs installed with cargo (maybe even cabal?)
 - install packages from AUR
-- flag for overwriting files during link and copy
 - per-username configuration
 - post-sync hooks

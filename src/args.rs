@@ -48,11 +48,19 @@ pub(crate) struct CompletionsArgs {
 
 /// Create copies of configuration files in declared locations.
 #[derive(Debug, StructOpt)]
-pub(crate) struct CopyArgs {}
+pub(crate) struct CopyArgs {
+    /// Overwrite files if they already exist.
+    #[structopt(short, long)]
+    pub(crate) force: bool,
+}
 
 /// Create links to configuration files in declared locations.
 #[derive(Debug, StructOpt)]
-pub(crate) struct LinkArgs {}
+pub(crate) struct LinkArgs {
+    /// Overwrite link targets if they already exist.
+    #[structopt(short, long)]
+    pub(crate) force: bool,
+}
 
 /// Enable declared systemd services.
 #[derive(Debug, StructOpt)]
