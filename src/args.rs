@@ -64,7 +64,7 @@ pub(crate) struct ServiceArgs {
     ///
     /// Only affects declared services, has no effect on services enabled by `--reset`.
     #[structopt(long)]
-    pub(crate) now: bool,
+    pub(crate) start: bool,
 }
 
 /// Display information about declared and currently installed packages.
