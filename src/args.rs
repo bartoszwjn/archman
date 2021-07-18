@@ -32,6 +32,7 @@ pub(crate) enum Subcommand {
     Completions(CompletionsArgs),
     Copy(CopyArgs),
     Link(LinkArgs),
+    Service(ServiceArgs),
     Show(ShowArgs),
     Sync(SyncArgs),
 }
@@ -52,6 +53,19 @@ pub(crate) struct CopyArgs {}
 /// Create links to configuration files in declared locations.
 #[derive(Debug, StructOpt)]
 pub(crate) struct LinkArgs {}
+
+/// Enable declared systemd services.
+#[derive(Debug, StructOpt)]
+pub(crate) struct ServiceArgs {
+    /// Reset the enabled/disabled status of all services to their defaults.
+    #[structopt(long)]
+    pub(crate) reset: bool,
+    /// Start the services when enabling them.
+    ///
+    /// Only affects declared services, has no effect on services enabled by `--reset`.
+    #[structopt(long)]
+    pub(crate) now: bool,
+}
 
 /// Display information about declared and currently installed packages.
 #[derive(Debug, StructOpt)]
