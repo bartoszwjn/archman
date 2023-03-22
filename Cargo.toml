@@ -2,7 +2,7 @@
 name = "archman"
 version = "0.0.0"
 authors = ["Bartosz Wojno <bartoszwjn@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "Trying to declaratively configure Arch Linux"
 
 [dependencies]
