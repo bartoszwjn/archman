@@ -4,6 +4,10 @@ version = "0.0.0"
 authors = ["Bartosz Wojno <bartoszwjn@gmail.com>"]
 edition = "2021"
 description = "Trying to declaratively configure Arch Linux"
+rust-version = "1.67.1"
+repository = "https://github.com/bartoszwjn/archman"
+license = "MIT"
+publish = false
 
 [dependencies]
 ansi_term = "0.12.1"
