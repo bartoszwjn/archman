@@ -24,12 +24,14 @@ use config::Config;
 
 /// Runs the program, given the parsed command line arguments.
 pub fn run(args: Args) -> anyhow::Result<()> {
+    if let Subcommand::Completions(completions_args) = args.subcommand {
+        return completions::generate_completions(completions_args);
+    }
+
     let config = Config::read_from_file(args.common)?;
 
     match args.subcommand {
-        Subcommand::Completions(completions_args) => {
-            completions::generate_completions(completions_args)
-        }
+        Subcommand::Completions(_) => unreachable!(),
         Subcommand::Copy(copy_args) => {
             link::create_copies(copy_args, config);
             Ok(())

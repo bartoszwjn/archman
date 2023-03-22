@@ -39,6 +39,12 @@
     in {
       archman = craneLib.buildPackage {
         inherit src cargoArtifacts;
+        postBuild = ''
+          target/release/archman completions target/release
+        '';
+        postInstall = ''
+          install -D --mode=444 target/release/_archman $out/share/zsh/site-functions/_archman
+        '';
       };
       archman-clippy = craneLib.cargoClippy {
         inherit src cargoArtifacts;
