@@ -27,7 +27,7 @@ pub struct ArgsCommon {
 // TODO a better about
 /// The program's subcommands.
 #[derive(Debug, StructOpt)]
-#[structopt(about = "A configuration utility for my specific Arch Linux setup")]
+#[structopt(about = "Trying to declaratively configure Arch Linux")]
 pub enum Subcommand {
     Completions(CompletionsArgs),
     Copy(CopyArgs),

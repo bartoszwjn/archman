@@ -50,9 +50,7 @@ pub fn query_packages() -> anyhow::Result<InstalledPackages> {
     })
 }
 
-pub fn query_groups<'a>(
-    groups: &HashSet<&'a str>,
-) -> anyhow::Result<HashMap<String, &'a str>> {
+pub fn query_groups<'a>(groups: &HashSet<&'a str>) -> anyhow::Result<HashMap<String, &'a str>> {
     pacman::groups(groups.iter().copied()).map_err(Into::into)
 }
 

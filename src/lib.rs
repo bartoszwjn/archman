@@ -1,4 +1,4 @@
-//! ArchMan --- a configuration utility for my specific Arch Linux setup.
+//! ArchMan --- trying to declaratively configure Arch Linux
 //!
 //! Documentation for specific modules provides more information.
 

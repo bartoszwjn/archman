@@ -1,5 +1,0 @@
-What other functionality could be added:
-- programs installed with cargo (maybe even cabal?)
-- install packages from AUR
-- per-username configuration
-- post-sync hooks

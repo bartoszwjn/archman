@@ -61,7 +61,7 @@ where
     S: AsRef<OsStr>,
 {
     let mut cmd = Command::new("pacman");
-    cmd.args(&["--color=auto", "-D"]);
+    cmd.args(["--color=auto", "-D"]);
     match install_reason {
         InstallReason::Explicit => cmd.arg("--asexplicit"),
         InstallReason::Dependency => cmd.arg("--asdeps"),
@@ -84,7 +84,7 @@ where
     S: AsRef<OsStr>,
 {
     let mut cmd = Command::new("pacman");
-    cmd.args(&["--color=auto", "-S", "-y"]);
+    cmd.args(["--color=auto", "-S", "-y"]);
     if system_upgrade {
         cmd.arg("-u");
     }
@@ -105,7 +105,7 @@ where
     S: AsRef<OsStr>,
 {
     let mut cmd = Command::new("pacman");
-    cmd.args(&["--color=auto", "-R", "-s", "-u"]);
+    cmd.args(["--color=auto", "-R", "-s", "-u"]);
     cmd.args(packages);
 
     run_for_status(cmd)
@@ -132,7 +132,7 @@ fn run_for_status(mut cmd: Command) -> Result<()> {
 /// inherited from the current process.
 pub fn query(filter: QueryFilter) -> Result<HashSet<String>> {
     let mut cmd = Command::new("pacman");
-    cmd.args(&["-Q", "-q", "-n"]);
+    cmd.args(["-Q", "-q", "-n"]);
     if let Some(install_reason) = filter.install_reason {
         match install_reason {
             InstallReason::Explicit => cmd.arg("-e"),
@@ -175,7 +175,7 @@ where
     let mut packages = HashMap::new();
     for group in groups {
         let mut cmd = Command::new("pacman");
-        cmd.args(&["-S", "-g", "-q", &group]);
+        cmd.args(["-S", "-g", "-q", group]);
         let output = cmd.output()?;
         if output.status.success() {
             match std::str::from_utf8(&output.stdout) {

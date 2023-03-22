@@ -67,12 +67,12 @@ fn find_services_to_enable<'a>(
 
 fn check_service_status(service: &str) -> anyhow::Result<ServiceStatus> {
     let enabled = Command::new("systemctl")
-        .args(&["is-enabled", "-q", service])
+        .args(["is-enabled", "-q", service])
         .status()
         .context("Failed to run systemctl")?
         .success();
     let active = Command::new("systemctl")
-        .args(&["is-active", "-q", service])
+        .args(["is-active", "-q", service])
         .status()
         .context("Failed to run systemctl")?
         .success();
@@ -85,9 +85,17 @@ fn enable_services(services: &[&str], start: bool) -> anyhow::Result<()> {
     }
 
     if start {
-        colour!("Enabling and starting {} {}", services.len(), services_str(services.len()));
+        colour!(
+            "Enabling and starting {} {}",
+            services.len(),
+            services_str(services.len()),
+        );
     } else {
-        colour!("Enabling {} {}", services.len(), services_str(services.len()));
+        colour!(
+            "Enabling {} {}",
+            services.len(),
+            services_str(services.len()),
+        );
     }
     let mut cmd = Command::new("systemctl");
     cmd.arg("enable");
