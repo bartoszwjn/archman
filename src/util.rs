@@ -6,11 +6,17 @@ macro_rules! error {
         {
             let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stderr());
             let style = if use_style {
-                ::ansi_term::Colour::Red.bold()
+                ::anstyle::AnsiColor::Red.on_default().bold()
             } else {
-                ::ansi_term::Style::new()
+                ::anstyle::Style::new()
             };
-            eprintln!("{} {}", style.paint("error:"), ::core::format_args!($($fmt),+));
+            eprintln!(
+                "{}{}{} {}",
+                style.render(),
+                "error:",
+                style.render_reset(),
+                ::core::format_args!($($fmt),+),
+            );
         }
     }
 }
@@ -21,11 +27,17 @@ macro_rules! warn {
         {
             let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stderr());
             let style = if use_style {
-                ::ansi_term::Colour::Yellow.bold()
+                ::anstyle::AnsiColor::Yellow.on_default().bold()
             } else {
-                ::ansi_term::Style::new()
+                ::anstyle::Style::new()
             };
-            eprintln!("{} {}", style.paint("warning:"), ::core::format_args!($($fmt),+));
+            eprintln!(
+                "{}{}{} {}",
+                style.render(),
+                "warning:",
+                style.render_reset(),
+                ::core::format_args!($($fmt),+),
+            );
         }
     }
 }
@@ -36,11 +48,17 @@ macro_rules! info {
         {
             let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stdout());
             let style = if use_style {
-                ::ansi_term::Style::new().bold()
+                ::anstyle::Style::new().bold()
             } else {
-                ::ansi_term::Style::new()
+                ::anstyle::Style::new()
             };
-            println!("{} {}", style.paint("info:"), ::core::format_args!($($fmt),+));
+            eprintln!(
+                "{}{}{} {}",
+                style.render(),
+                "info:",
+                style.render_reset(),
+                ::core::format_args!($($fmt),+),
+            );
         }
     }
 }
@@ -51,11 +69,16 @@ macro_rules! colour {
         {
             let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stdout());
             let style = if use_style {
-                ::ansi_term::Colour::Blue.bold()
+                ::anstyle::AnsiColor::Blue.on_default().bold()
             } else {
-                ::ansi_term::Style::new()
+                ::anstyle::Style::new()
             };
-            println!("{}{}{}", style.prefix(), ::core::format_args!($($fmt),+), style.suffix());
+            println!(
+                "{}{}{}",
+                style.render(),
+                ::core::format_args!($($fmt),+),
+                style.render_reset(),
+            );
         }
     }
 }
@@ -66,11 +89,16 @@ macro_rules! bold {
         {
             let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stdout());
             let style = if use_style {
-                ::ansi_term::Style::new().bold()
+                ::anstyle::Style::new().bold()
             } else {
-                ::ansi_term::Style::new()
+                ::anstyle::Style::new()
             };
-            println!("{}{}{}", style.prefix(), ::core::format_args!($($fmt),+), style.suffix());
+            println!(
+                "{}{}{}",
+                style.render(),
+                ::core::format_args!($($fmt),+),
+                style.render_reset(),
+            );
         }
     }
 }

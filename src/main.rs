@@ -1,4 +1,4 @@
-use ansi_term::Colour;
+use anstyle::AnsiColor;
 use clap::Parser;
 use is_terminal::IsTerminal;
 
@@ -9,11 +9,17 @@ fn main() -> ! {
         Err(err) => {
             let is_tty = std::io::stderr().is_terminal();
             let style = if is_tty {
-                Colour::Red.bold()
+                AnsiColor::Red.on_default().bold()
             } else {
                 Default::default()
             };
-            eprintln!("\n{} {:?}", style.paint("error:"), err);
+            eprintln!(
+                "\n{}{}{} {:?}",
+                style.render(),
+                "error:",
+                style.render_reset(),
+                err,
+            );
             1
         }
     };
