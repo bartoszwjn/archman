@@ -1,8 +1,8 @@
 use ansi_term::Colour;
-use structopt::StructOpt;
+use clap::Parser;
 
 fn main() -> ! {
-    let args = StructOpt::from_args();
+    let args = Parser::parse();
     let exit_code = match archman::run(args) {
         Ok(()) => 0,
         Err(err) => {

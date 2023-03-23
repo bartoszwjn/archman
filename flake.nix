@@ -40,7 +40,7 @@
       archman = craneLib.buildPackage {
         inherit src cargoArtifacts;
         postBuild = ''
-          target/release/archman completions target/release
+          target/release/archman completions > target/release/_archman
         '';
         postInstall = ''
           install -D --mode=444 target/release/_archman $out/share/zsh/site-functions/_archman
