@@ -4,7 +4,7 @@
 macro_rules! error {
     ($($fmt:expr),+ $(,)?) => {
         {
-            let use_style = ::atty::is(::atty::Stream::Stderr);
+            let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stderr());
             let style = if use_style {
                 ::ansi_term::Colour::Red.bold()
             } else {
@@ -19,7 +19,7 @@ macro_rules! error {
 macro_rules! warn {
     ($($fmt:expr),+ $(,)?) => {
         {
-            let use_style = ::atty::is(::atty::Stream::Stderr);
+            let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stderr());
             let style = if use_style {
                 ::ansi_term::Colour::Yellow.bold()
             } else {
@@ -34,7 +34,7 @@ macro_rules! warn {
 macro_rules! info {
     ($($fmt:expr),+ $(,)?) => {
         {
-            let use_style = ::atty::is(::atty::Stream::Stdout);
+            let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stdout());
             let style = if use_style {
                 ::ansi_term::Style::new().bold()
             } else {
@@ -49,7 +49,7 @@ macro_rules! info {
 macro_rules! colour {
     ($($fmt:expr),+ $(,)?) => {
         {
-            let use_style = ::atty::is(::atty::Stream::Stdout);
+            let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stdout());
             let style = if use_style {
                 ::ansi_term::Colour::Blue.bold()
             } else {
@@ -64,7 +64,7 @@ macro_rules! colour {
 macro_rules! bold {
     ($($fmt:expr),+ $(,)?) => {
         {
-            let use_style = ::atty::is(::atty::Stream::Stdout);
+            let use_style = ::is_terminal::IsTerminal::is_terminal(&::std::io::stdout());
             let style = if use_style {
                 ::ansi_term::Style::new().bold()
             } else {

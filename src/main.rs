@@ -1,12 +1,13 @@
 use ansi_term::Colour;
 use clap::Parser;
+use is_terminal::IsTerminal;
 
 fn main() -> ! {
     let args = Parser::parse();
     let exit_code = match archman::run(args) {
         Ok(()) => 0,
         Err(err) => {
-            let is_tty = atty::is(atty::Stream::Stderr);
+            let is_tty = std::io::stderr().is_terminal();
             let style = if is_tty {
                 Colour::Red.bold()
             } else {
