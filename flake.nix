@@ -80,6 +80,6 @@
       '';
     })
     // {
-      overlays.default = final: prev: {inherit (mkOutputs final) rtangle;};
+      overlays.default = final: prev: {inherit (mkOutputs final) archman;};
     };
 }
